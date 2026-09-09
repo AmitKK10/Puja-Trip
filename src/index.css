@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-sindoor: #991B1B;
+    --color-vermilion: #DC2626;
+    --color-crimson: #881337;
+    --color-gold: #B45309;
+    --color-amber-gold: #D97706;
+    --color-gold-light: #FEF08A;
+    --color-cream: #FFFCF7;
+    --color-kora: #F7F3E8;
+    --color-surface-border: #E7E2D8;
+    --color-surface-card: #FFFFFF;
+    --color-night: #1C1418;
+    --color-night-card: #281B23;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #FFFCF7;
+    color: #1C1917;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* ==========================================================================
+   PUJATRIP TYPOGRAPHY DESIGN SYSTEM
+   ========================================================================== */
+
+/* 1. Font Family Tokens */
+.font-sans {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+.font-display {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-bengali {
+  font-family: 'Hind Siliguri', 'Noto Serif Bengali', -apple-system, sans-serif;
+  line-height: 1.35;
+}
+
+.font-bengali-serif {
+  font-family: 'Noto Serif Bengali', 'Hind Siliguri', Georgia, serif;
+  line-height: 1.45;
+}
+
+.font-festive {
+  font-family: 'Rozha One', 'Cinzel', Georgia, serif;
+}
+
+/* 2. Mathematical Typography Scale Tokens */
+.text-hero {
+  font-size: 2rem; /* 32px */
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.text-h1 {
+  font-size: 1.5rem; /* 24px */
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.text-h2 {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+
+.text-h3 {
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.3;
+}
+
+.text-h4 {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.text-body {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.6;
+}
+
+.text-small {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.5;
+}
+
+.text-micro {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.text-btn {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 3. Live Metrics & Numerical Alignment Token */
+.text-metric {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.01em;
+}
+
+/* 4. Bilingual Hierarchy Helpers */
+.bengali-subheading {
+  font-family: 'Hind Siliguri', 'Noto Serif Bengali', sans-serif;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.bengali-editorial {
+  font-family: 'Noto Serif Bengali', 'Hind Siliguri', serif;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(220, 38, 38, 0.05);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(153, 27, 27, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(153, 27, 27, 0.6);
+}
+
+/* Subtle Alpana background pattern */
+.bg-alpana-pattern {
+  background-image: radial-gradient(#991B1B 0.75px, transparent 0.75px), radial-gradient(#D97706 0.75px, #FDFBF7 0.75px);
+  background-size: 30px 30px;
+  background-position: 0 0, 15px 15px;
+  background-opacity: 0.04;
+}
+
+.bg-festive-dark-pattern {
+  background-image: radial-gradient(#F59E0B 0.8px, transparent 0.8px), radial-gradient(#DC2626 0.8px, #1C1418 0.8px);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+}
+
+/* Red-Gold Glass gradient */
+.festive-glass {
+  background: rgba(255, 253, 249, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(217, 119, 6, 0.18);
+}
+
+.festive-glass-dark {
+  background: rgba(28, 20, 24, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+/* Pulsing crowd animations */
+@keyframes festive-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+.animate-festive-pulse {
+  animation: festive-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes dhunuchi-flicker {
+  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 14px rgba(220, 38, 38, 0.8)); }
+}
+.animate-dhunuchi {
+  animation: dhunuchi-flicker 1.8s ease-in-out infinite;
+}
+

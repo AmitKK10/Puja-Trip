@@ -1,0 +1,6 @@
+{
+  "name": "PujaTrip",
+  "description": "Mobile-first PWA for private Durga Puja pandal-hopping trips in Kolkata and Contai with physical QR code pandal scanning, crowd density heatmap indicators, WhatsApp itinerary sharing & poster generation, traditional Dhak audio loop, weather alert system, and squad coordination.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -13,7 +13,7 @@ Instead of switching between multiple applications for routes, maps, group coord
 ## 🌐 Live Demo
 
 **Vercel:**
-https://YOUR-VERCEL-URL.vercel.app
+https://puja-trip.vercel.app/
 
 > Replace the URL above with the actual Vercel deployment URL after deployment.
 
@@ -665,4 +665,4 @@ A smarter way to plan, navigate, coordinate, and enjoy Durga Puja pandal hopping
 ### 🔗 Links
 
 * **GitHub:** https://github.com/AmitKK10/Puja-Trip
-* **Live Demo:** https://YOUR-VERCEL-URL.vercel.app
+* **Live Demo:** https://puja-trip.vercel.app/

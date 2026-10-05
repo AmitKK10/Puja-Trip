@@ -3,6 +3,7 @@ import { CityId, Pandal, CuratedRoute, UserPreferences } from './types';
 import { SAMPLE_PANDALS } from './data/pandalData';
 import { Header } from './components/common/Header';
 import { BottomNav, ScreenTab } from './components/common/BottomNav';
+import { PWAInstallBanner } from './components/common/PWAInstallBanner';
 import { SplashScreen } from './components/screens/SplashScreen';
 import { HomeScreen } from './components/screens/HomeScreen';
 import { DiscoveryScreen } from './components/screens/DiscoveryScreen';
@@ -12,6 +13,7 @@ import { RouteScreen } from './components/screens/RouteScreen';
 import { FavoritesScreen } from './components/screens/FavoritesScreen';
 import { GroupScreen } from './components/screens/GroupScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
+import { AboutDeveloperScreen } from './components/screens/AboutDeveloperScreen';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<ScreenTab>('splash');
@@ -79,7 +81,7 @@ export default function App() {
 
     // If active trip is empty for new city, set appropriate defaults
     if (newCity === 'contai') {
-      setActiveTripPandalIds(['contai-sabuj-sangha', 'contai-central-bus-stand', 'contai-junput-jubak']);
+      setActiveTripPandalIds(['contai-nandanik', 'contai-youth', 'contai-sabuj-sangha']);
     } else {
       setActiveTripPandalIds(['shobhabazar-rajbari', 'bagbazar-sarbojanin', 'college-square']);
     }
@@ -224,6 +226,7 @@ export default function App() {
             pandals={pandals}
             activeTripPandalIds={activeTripPandalIds}
             onSelectPandal={handleSelectPandal}
+            onToggleTripPandal={handleToggleTripPandal}
             userPrefs={userPrefs}
           />
         )}
@@ -284,9 +287,26 @@ export default function App() {
             onUpdatePrefs={setUserPrefs}
             onCityChange={handleCityChange}
             onOpenSplash={() => setCurrentTab('splash')}
+            onOpenDeveloper={() => {
+              setCurrentTab('developer');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+
+        {currentTab === 'developer' && (
+          <AboutDeveloperScreen
+            userPrefs={userPrefs}
+            onBack={() => {
+              setCurrentTab('settings');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
       </main>
+
+      {/* Floating Bottom PWA Install Banner for Uninstalled Visitors */}
+      <PWAInstallBanner isDarkMode={isDarkMode} />
 
       {/* Bottom Sticky Tab Bar */}
       <BottomNav

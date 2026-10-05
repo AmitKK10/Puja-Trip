@@ -2,7 +2,7 @@ import React from 'react';
 import { Home, Compass, Map as MapIcon, Route as RouteIcon, Bookmark, Settings as SettingsIcon, Users } from 'lucide-react';
 import { UserPreferences } from '../../types';
 
-export type ScreenTab = 'splash' | 'home' | 'discovery' | 'detail' | 'map' | 'route' | 'favorites' | 'group' | 'settings';
+export type ScreenTab = 'splash' | 'home' | 'discovery' | 'detail' | 'map' | 'route' | 'favorites' | 'group' | 'settings' | 'developer';
 
 interface BottomNavProps {
   currentTab: ScreenTab;
@@ -78,7 +78,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     >
       <div className="max-w-md mx-auto px-2 py-1.5 flex items-center justify-around">
         {navItems.map((item) => {
-          const isActive = currentTab === item.id;
+          const isActive = currentTab === item.id || (item.id === 'settings' && currentTab === 'developer');
           const Icon = item.icon;
 
           return (

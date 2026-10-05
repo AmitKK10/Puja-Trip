@@ -1,0 +1,37 @@
+{
+  "id": "/",
+  "name": "PujaTrip",
+  "short_name": "PujaTrip",
+  "description": "Curated, mobile-first companion for private Durga Puja pandal-hopping trips across Kolkata and Contai, West Bengal.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#881337",
+  "background_color": "#FFFCF7",
+  "categories": [
+    "travel",
+    "lifestyle",
+    "navigation"
+  ],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

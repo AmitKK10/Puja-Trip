@@ -54,6 +54,7 @@ import { SOSModal } from '../common/SOSModal';
 import { LostGroupModal } from '../common/LostGroupModal';
 import { EmergencyInformationModal } from '../common/EmergencyInformationModal';
 import { CrowdDensityVisualIndicator, getCrowdDensityInfo } from '../pandal/CrowdDensityVisualIndicator';
+import { handleImageError } from '../../utils/imageFallback';
 import { playKanshorBell } from '../../utils/audioSynth';
 import {
   MapPin,
@@ -83,6 +84,8 @@ import {
   ShieldAlert,
   HelpCircle,
   X,
+  Check,
+  Plus,
 } from 'lucide-react';
 
 interface MapScreenProps {
@@ -90,6 +93,7 @@ interface MapScreenProps {
   pandals: Pandal[];
   activeTripPandalIds: string[];
   onSelectPandal: (pandal: Pandal) => void;
+  onToggleTripPandal?: (id: string) => void;
   userPrefs: UserPreferences;
 }
 
@@ -98,6 +102,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   pandals,
   activeTripPandalIds,
   onSelectPandal,
+  onToggleTripPandal,
   userPrefs,
 }) => {
   const isDarkMode = userPrefs.themeMode === 'mahasaptami_night';
@@ -120,7 +125,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     return cityAnchors.find((a) => a.id === selectedAnchorId) || cityAnchors[0];
   }, [cityAnchors, selectedAnchorId]);
 
+  // Selected Pandal state
   const [selectedPandalId, setSelectedPandalId] = useState<string>(cityPandals[0]?.id || '');
+  const [showPandalSheet, setShowPandalSheet] = useState<boolean>(true);
+
+  // Layer toggles
   const [showMetroLines, setShowMetroLines] = useState(true);
   const [showFriendsOnMap, setShowFriendsOnMap] = useState(true);
   const [mapFilter, setMapFilter] = useState<'all' | 'must_visit' | 'low_queue'>('all');
@@ -263,12 +272,90 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     });
   }, [cityPandals, mapFilter]);
 
+  // Smart Collision Avoidance & Micro-Offset
+  const positionedPandals = useMemo(() => {
+    const placed: Array<{
+      pandal: Pandal;
+      x: number;
+      y: number;
+      isMustVisit: boolean;
+      isInRoute: boolean;
+      routeIndex: number;
+    }> = [];
+
+    displayedPandals.forEach((pandal, idx) => {
+      let x = pandal.coordinates.mapX;
+      let y = pandal.coordinates.mapY;
+      const isMustVisit = pandal.recommendationLevel === 'Must Visit';
+      const routeIndex = activeTripPandalIds.indexOf(pandal.id);
+      const isInRoute = routeIndex !== -1;
+
+      // Detect collisions with previously positioned pandals
+      for (let i = 0; i < placed.length; i++) {
+        const prev = placed[i];
+        const dist = Math.hypot(x - prev.x, y - prev.y);
+        if (dist < 3.8) {
+          // Micro-offset radially
+          const angle = (idx + 1) * 1.57;
+          x += Math.cos(angle) * 2.4;
+          y += Math.sin(angle) * 2.4;
+          break;
+        }
+      }
+
+      placed.push({ pandal, x, y, isMustVisit, isInRoute, routeIndex });
+    });
+
+    return placed;
+  }, [displayedPandals, activeTripPandalIds]);
+
   // Active squad members with valid live GPS
   const activeFriendsOnMap = useMemo(() => {
     return memberLocations.filter(
       (m) => m.isSharing && m.status !== 'disabled' && m.latitude !== 0 && m.longitude !== 0
     );
   }, [memberLocations]);
+
+  // Route directional segments
+  const routeSegments = useMemo(() => {
+    const routePandals = activeTripPandalIds
+      .map((id) => cityPandals.find((p) => p.id === id))
+      .filter(Boolean) as Pandal[];
+
+    if (routePandals.length < 2) return [];
+
+    const segments: Array<{
+      fromX: number;
+      fromY: number;
+      toX: number;
+      toY: number;
+      midX: number;
+      midY: number;
+      angleDeg: number;
+      index: number;
+    }> = [];
+
+    for (let i = 0; i < routePandals.length - 1; i++) {
+      const from = routePandals[i].coordinates;
+      const to = routePandals[i + 1].coordinates;
+      const midX = (from.mapX + to.mapX) / 2;
+      const midY = (from.mapY + to.mapY) / 2;
+      const angleDeg = (Math.atan2(to.mapY - from.mapY, to.mapX - from.mapX) * 180) / Math.PI;
+
+      segments.push({
+        fromX: from.mapX,
+        fromY: from.mapY,
+        toX: to.mapX,
+        toY: to.mapY,
+        midX,
+        midY,
+        angleDeg,
+        index: i,
+      });
+    }
+
+    return segments;
+  }, [activeTripPandalIds, cityPandals]);
 
   // Handle Find Friend: Center Map on Friend
   const handleFindFriend = (friend: GroupMemberLocation) => {
@@ -284,8 +371,40 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleNavigateToCoords = (lat: number, lng: number) => {
     const coords = latLngToMapCoordinates(lat, lng, activeCity);
     setMapCenter({ x: coords.mapX, y: coords.mapY });
-    setZoomLevel(1.4);
+    setZoomLevel(1.35);
     playKanshorBell(0.6);
+  };
+
+  // Recenter on active route bounds
+  const handleRecenterRoute = () => {
+    const routePandals = cityPandals.filter((p) => activeTripPandalIds.includes(p.id));
+    if (routePandals.length > 0) {
+      const avgX = routePandals.reduce((sum, p) => sum + p.coordinates.mapX, 0) / routePandals.length;
+      const avgY = routePandals.reduce((sum, p) => sum + p.coordinates.mapY, 0) / routePandals.length;
+      setMapCenter({ x: avgX, y: avgY });
+      setZoomLevel(1.15);
+      playKanshorBell(0.5);
+    } else {
+      setMapCenter({ x: 50, y: 50 });
+      setZoomLevel(1);
+    }
+  };
+
+  // Center on user's current GPS location
+  const handleCenterMyLocation = () => {
+    const myLoc = memberLocations.find((l) => l.isCurrentUser && l.latitude !== 0);
+    if (myLoc && myLoc.latitude && myLoc.longitude) {
+      const coords = latLngToMapCoordinates(myLoc.latitude, myLoc.longitude, activeCity);
+      setMapCenter({ x: coords.mapX, y: coords.mapY });
+      setZoomLevel(1.35);
+      playKanshorBell(0.6);
+    } else if (activeAnchor) {
+      const anchorX = activeAnchor.city === 'kolkata' ? 47 : 48;
+      const anchorY = activeAnchor.city === 'kolkata' ? 17 : 44;
+      setMapCenter({ x: anchorX, y: anchorY });
+      setZoomLevel(1.2);
+      playKanshorBell(0.5);
+    }
   };
 
   const handleToggleEssentialCategory = (cat: EssentialPlaceCategory) => {
@@ -301,8 +420,24 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setProximityAlert(null);
   };
 
+  // Label display logic with smart hierarchy
+  const shouldRenderLabel = (item: {
+    pandal: Pandal;
+    isMustVisit: boolean;
+    isInRoute: boolean;
+  }) => {
+    const isSelected = item.pandal.id === activePandal?.id;
+    if (isSelected) return true;
+    if (zoomLevel >= 1.25) return true;
+    if (item.isInRoute && zoomLevel >= 0.95) return true;
+    if (item.isMustVisit && zoomLevel >= 0.85) return true;
+    return false;
+  };
+
+  const isCurrentPandalInRoute = activePandal ? activeTripPandalIds.includes(activePandal.id) : false;
+
   return (
-    <div id="interactive-map-screen" className="relative flex flex-col min-h-[620px] pb-12 animate-fadeIn space-y-3">
+    <div id="interactive-map-screen" className="relative flex flex-col min-h-[620px] pb-24 animate-fadeIn space-y-3">
       {/* 0. Live Emergency & Lost Alerts Banners */}
       <ActiveSOSAlertBanner
         alerts={activeSOSAlerts}
@@ -396,69 +531,71 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         userPrefs={userPrefs}
       />
 
-      {/* 1. Anchor / "I am currently at..." Bar */}
+      {/* 1. Compact Anchor / Reference Point Bar */}
       <div
-        className={`p-3 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all ${
+        className={`px-3 py-2 rounded-2xl border shadow-xs flex items-center justify-between gap-2.5 transition-all ${
           isDarkMode
-            ? 'bg-[#281B23] border-[#F59E0B]/30 text-white'
-            : 'bg-white border-[#D97706]/30 text-stone-900'
+            ? 'bg-[#281B23] border-[#F59E0B]/25 text-white'
+            : 'bg-white border-amber-900/15 text-stone-900'
         }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[#DC2626] text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
-            <Crosshair className="w-4 h-4" />
+        <div className="flex items-center gap-2 min-w-0 shrink-0">
+          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#991B1B] to-[#DC2626] text-amber-200 flex items-center justify-center shrink-0 shadow-xs">
+            <Crosshair className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-micro text-stone-500 font-bold uppercase tracking-wider block">
-              Reference Point / Anchor
-            </span>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-display font-black text-small sm:text-h4 text-[#881337] dark:text-[#FEF08A] truncate">
+              <span className="text-[11px] text-stone-500 font-bold uppercase tracking-wider">
+                Anchor:
+              </span>
+              <span className="font-display font-black text-small text-[#881337] dark:text-[#FEF08A] truncate">
                 {activeAnchor.name}
               </span>
-              <span className="font-bengali text-micro text-[#DC2626] font-bold">
+              <span className="font-bengali text-micro text-[#DC2626] font-bold hidden xs:inline">
                 ({activeAnchor.bengaliName})
               </span>
             </div>
           </div>
         </div>
 
-        {/* Anchor Quick Switcher Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-          {cityAnchors.map((anchor) => (
-            <button
-              key={anchor.id}
-              onClick={() => setSelectedAnchorId(anchor.id)}
-              className={`px-2.5 py-1.5 rounded-xl text-micro font-bold transition-all shrink-0 ${
-                anchor.id === selectedAnchorId
-                  ? 'bg-[#991B1B] text-white shadow-xs'
-                  : isDarkMode
-                  ? 'bg-[#3B1324] text-stone-300 hover:bg-[#522030]'
-                  : 'bg-stone-100 text-stone-700 hover:bg-amber-100'
-              }`}
-            >
-              {anchor.name.split(' ')[0]}
-            </button>
-          ))}
+        {/* Quick Horizontal Scrollable Anchor Switcher */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {cityAnchors.map((anchor) => {
+            const isSelected = anchor.id === selectedAnchorId;
+            return (
+              <button
+                key={anchor.id}
+                onClick={() => setSelectedAnchorId(anchor.id)}
+                className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all whitespace-nowrap shrink-0 ${
+                  isSelected
+                    ? 'bg-[#991B1B] text-amber-100 shadow-xs font-black'
+                    : isDarkMode
+                    ? 'bg-stone-800/80 text-stone-300 hover:bg-stone-700'
+                    : 'bg-stone-100 text-stone-700 hover:bg-amber-100/70'
+                }`}
+              >
+                {anchor.name.split(' ')[0]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* 2. Interactive SVG Map Canvas */}
+      {/* 2. Interactive Premium Map Canvas */}
       <div
         id="svg-map-canvas-container"
-        className={`relative w-full h-[400px] sm:h-[460px] rounded-3xl overflow-hidden border shadow-inner transition-colors duration-300 ${
-          isDarkMode ? 'border-[#F59E0B]/30 bg-[#1C1418]' : 'border-[#D97706]/30 bg-[#FFFDF9]'
+        className={`relative w-full h-[470px] sm:h-[530px] rounded-3xl overflow-hidden border shadow-md transition-colors duration-300 select-none ${
+          isDarkMode ? 'border-stone-800 bg-[#140F13]' : 'border-stone-200 bg-[#FAF7F2]'
         }`}
       >
-        {/* Floating Controls Overlay */}
-        <div className="absolute top-3 left-3 right-3 z-20 flex items-center justify-between gap-2 pointer-events-none">
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 pointer-events-auto bg-white/90 dark:bg-stone-900/90 backdrop-blur-xs p-1 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-sm">
+        {/* Floating Top Filters Bar (Horizontally scrollable, compact) */}
+        <div className="absolute top-3 left-3 right-16 z-20 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto bg-white/95 dark:bg-stone-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-stone-200/90 dark:border-stone-800 shadow-sm overflow-x-auto no-scrollbar">
             <button
               onClick={() => setMapFilter('all')}
-              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all whitespace-nowrap shrink-0 ${
                 mapFilter === 'all'
-                  ? 'bg-[#DC2626] text-white'
+                  ? 'bg-[#991B1B] text-white shadow-xs'
                   : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
               }`}
             >
@@ -466,118 +603,124 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </button>
             <button
               onClick={() => setMapFilter('must_visit')}
-              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0 ${
                 mapFilter === 'must_visit'
-                  ? 'bg-[#DC2626] text-white'
+                  ? 'bg-[#991B1B] text-white shadow-xs'
                   : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
               }`}
             >
-              <Award className="w-3 h-3 text-amber-500" />
+              <Award className="w-3 h-3 text-amber-400" />
               <span>Must Visit</span>
             </button>
             <button
               onClick={() => setMapFilter('low_queue')}
-              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all whitespace-nowrap shrink-0 ${
                 mapFilter === 'low_queue'
-                  ? 'bg-[#DC2626] text-white'
+                  ? 'bg-[#991B1B] text-white shadow-xs'
                   : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
               }`}
             >
               ⚡ Fast Queue
             </button>
-          </div>
 
-          {/* Map Layer Controls (Metro, Utilities, Friends, Zoom) */}
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            {/* Essential Places Layer Selector Button */}
+            {/* Utilities Filter Toggle */}
             <button
-              id="essential-places-layer-toggle"
               onClick={() => setShowEssentialLayersMenu(!showEssentialLayersMenu)}
-              className={`px-2.5 py-1 rounded-xl text-micro font-bold flex items-center gap-1 border shadow-xs transition-all ${
+              className={`px-2.5 py-1 rounded-xl text-micro font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-all ${
                 activeEssentialCategories.length > 0
-                  ? 'bg-[#991B1B] text-white border-red-700'
-                  : 'bg-white/90 dark:bg-stone-900/90 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-800'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
               }`}
-              title="Toggle Essential Utility Layers"
             >
-              <Layers className="w-3.5 h-3.5" />
+              <Layers className="w-3 h-3" />
               <span>Utilities ({activeEssentialCategories.length})</span>
             </button>
 
-            {/* Squad Friends Layer Toggle */}
+            {/* Squad Friends Toggle */}
             <button
               onClick={() => setShowFriendsOnMap(!showFriendsOnMap)}
-              className={`px-2.5 py-1 rounded-xl text-micro font-bold flex items-center gap-1 border shadow-xs transition-all ${
+              className={`px-2.5 py-1 rounded-xl text-micro font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-all ${
                 showFriendsOnMap
-                  ? 'bg-emerald-600 text-white border-emerald-500'
-                  : 'bg-white/90 dark:bg-stone-900/90 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-800'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
               }`}
-              title="Toggle Live Squad Friends on Map"
             >
-              <Users className="w-3.5 h-3.5" />
+              <Users className="w-3 h-3" />
               <span>Squad ({activeFriendsOnMap.length})</span>
             </button>
 
+            {/* Metro Toggle (Kolkata Only) */}
             {activeCity === 'kolkata' && (
               <button
                 onClick={() => setShowMetroLines(!showMetroLines)}
-                className={`p-1.5 rounded-xl border shadow-xs transition-all ${
+                className={`px-2.5 py-1 rounded-xl text-micro font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-all ${
                   showMetroLines
-                    ? 'bg-blue-600 text-white border-blue-500'
-                    : 'bg-white/90 dark:bg-stone-900/90 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-800'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
                 }`}
-                title="Toggle Metro Blue Line"
               >
-                <Train className="w-4 h-4" />
+                <Train className="w-3 h-3" />
+                <span>Metro</span>
               </button>
             )}
-
-            <div className="flex items-center bg-white/90 dark:bg-stone-900/90 backdrop-blur-xs rounded-xl border border-stone-200 dark:border-stone-800 p-0.5 shadow-xs">
-              <button
-                onClick={() => setZoomLevel((z) => Math.min(1.8, z + 0.15))}
-                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg text-stone-700 dark:text-stone-300"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => {
-                  setZoomLevel(1);
-                  setMapCenter({ x: 50, y: 50 });
-                }}
-                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg text-stone-700 dark:text-stone-300"
-                title="Reset View"
-              >
-                <Crosshair className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.15))}
-                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg text-stone-700 dark:text-stone-300"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
           </div>
+        </div>
+
+        {/* Floating Right-Side Controls Stack (My Location, Zoom, Recenter, Layers) */}
+        <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5 pointer-events-auto">
+          <button
+            onClick={handleCenterMyLocation}
+            className="w-9 h-9 rounded-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-md border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            title="My Location / Anchor"
+          >
+            <LocateFixed className="w-4 h-4 text-[#DC2626]" />
+          </button>
+
+          <button
+            onClick={handleRecenterRoute}
+            className="w-9 h-9 rounded-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-md border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            title="Recenter Route"
+          >
+            <Navigation className="w-4 h-4 text-amber-600" />
+          </button>
+
+          <button
+            onClick={() => setZoomLevel((z) => Math.min(1.8, Math.round((z + 0.2) * 100) / 100))}
+            className="w-9 h-9 rounded-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-md border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => setZoomLevel((z) => Math.max(0.8, Math.round((z - 0.2) * 100) / 100))}
+            className="w-9 h-9 rounded-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-md border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Essential Layers Selector Dropdown Menu */}
         {showEssentialLayersMenu && (
           <div
             id="essential-places-category-popover"
-            className="absolute top-14 right-3 z-30 w-72 p-3 rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border border-stone-200 dark:border-stone-700 shadow-2xl space-y-2 animate-scaleUp"
+            className="absolute top-14 left-3 right-3 sm:right-auto sm:w-80 z-30 p-3.5 rounded-2xl bg-white/98 dark:bg-stone-900/98 backdrop-blur-md border border-stone-200 dark:border-stone-700 shadow-xl space-y-2.5 animate-scaleUp"
           >
-            <div className="flex items-center justify-between pb-1.5 border-b border-stone-200 dark:border-stone-800">
-              <span className="font-display font-bold text-small text-stone-900 dark:text-stone-100">
-                Essential Map Layers
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+              <span className="font-display font-bold text-small text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-amber-600" />
+                <span>Utility & Safety Layers</span>
               </span>
               <button
                 onClick={() => setShowEssentialLayersMenu(false)}
-                className="p-1 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500"
+                className="p-1 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto no-scrollbar pt-1">
+            <div className="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto no-scrollbar">
               {(
                 [
                   'public_toilet',
@@ -598,13 +741,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   <button
                     key={cat}
                     onClick={() => handleToggleEssentialCategory(cat)}
-                    className={`p-2 rounded-xl text-left text-micro font-bold border transition-all flex items-center gap-1.5 ${
+                    className={`p-2 rounded-xl text-micro font-bold flex items-center gap-2 border transition-all text-left ${
                       isActive
-                        ? 'bg-red-500/15 border-red-500 text-red-700 dark:text-red-300'
-                        : 'bg-stone-50 dark:bg-stone-800/60 border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 text-amber-900 dark:text-amber-200'
+                        : 'bg-stone-50 dark:bg-stone-800/60 border-stone-200/60 dark:border-stone-700/60 text-stone-600 dark:text-stone-400'
                     }`}
                   >
-                    <span className="text-sm">{config.icon}</span>
+                    <span className="text-base">{config.icon}</span>
                     <span className="truncate">{config.label}</span>
                   </button>
                 );
@@ -613,31 +756,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           </div>
         )}
 
-        {/* Real-time Crowd Density Color-Coded Legend Overlay */}
+        {/* Clean Vector SVG Map */}
         <div
-          id="map-crowd-density-legend"
-          className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 p-1.5 rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border border-stone-200 dark:border-stone-800 shadow-md text-micro font-bold select-none"
-        >
-          <span className="text-stone-500 pl-1 hidden xs:inline">Crowd:</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Green (Low)</span>
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span>Yellow (Mod)</span>
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span>Red (High)</span>
-          </span>
-        </div>
-
-        {/* Vector SVG Map */}
-        <div
-          className={`w-full h-full transition-colors duration-300 ${
-            isDarkMode ? 'bg-[#181115]' : 'bg-[#F4EFE6]'
-          }`}
+          className="w-full h-full cursor-grab active:cursor-grabbing"
           style={{ touchAction: 'none' }}
         >
           <svg
@@ -649,163 +770,259 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
-            {/* Background Grid Pattern */}
             <defs>
-              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+              {/* Soft Grid Pattern for Real Map Texture */}
+              <pattern id="city-grid" width="12" height="12" patternUnits="userSpaceOnUse">
+                <rect width="12" height="12" fill={isDarkMode ? '#171116' : '#FBF9F5'} />
                 <path
-                  d="M 10 0 L 0 0 0 10"
+                  d="M 12 0 L 0 0 0 12"
                   fill="none"
-                  stroke={isDarkMode ? '#3B1324' : '#E7DFD5'}
-                  strokeWidth="0.3"
+                  stroke={isDarkMode ? '#231821' : '#F1ECE3'}
+                  strokeWidth="0.4"
                 />
               </pattern>
-              <linearGradient id="riverGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#0284C7" stopOpacity="0.6" />
+
+              {/* Natural River Gradient */}
+              <linearGradient id="hooghlyWater" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={isDarkMode ? '#0369A1' : '#BAE6FD'} stopOpacity={isDarkMode ? '0.7' : '0.85'} />
+                <stop offset="100%" stopColor={isDarkMode ? '#0284C7' : '#7DD3FC'} stopOpacity={isDarkMode ? '0.8' : '0.95'} />
               </linearGradient>
-              <linearGradient id="seaGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#0284C7" stopOpacity="0.5" />
+
+              {/* Natural Sea Gradient */}
+              <linearGradient id="contaiSea" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={isDarkMode ? '#0284C7' : '#7DD3FC'} stopOpacity="0.75" />
+                <stop offset="100%" stopColor={isDarkMode ? '#0369A1' : '#38BDF8'} stopOpacity="0.9" />
               </linearGradient>
+
+              {/* Directional Chevron Marker for Route */}
+              <marker
+                id="route-arrow"
+                viewBox="0 0 10 10"
+                refX="5"
+                refY="5"
+                markerWidth="3.5"
+                markerHeight="3.5"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#DC2626" />
+              </marker>
             </defs>
 
-            <rect width="100" height="100" fill="url(#grid)" />
+            {/* Base Background */}
+            <rect width="100" height="100" fill="url(#city-grid)" />
 
-            {/* Kolkata Geography */}
+            {/* Kolkata Real Geography & Soft Roads */}
             {activeCity === 'kolkata' && (
-              <g id="kolkata-landmarks">
-                {/* Hooghly River */}
+              <g id="kolkata-base-geography">
+                {/* Hooghly River Curving Flow */}
                 <path
-                  d="M 28 0 C 26 20, 20 40, 18 65 C 16 80, 12 90, 8 100 L 0 100 L 0 0 Z"
-                  fill="url(#riverGrad)"
+                  d="M 28 0 C 26 22, 19 42, 18 64 C 17 80, 13 90, 8 100 L 0 100 L 0 0 Z"
+                  fill="url(#hooghlyWater)"
+                  stroke={isDarkMode ? '#0284C7' : '#93C5FD'}
+                  strokeWidth="0.5"
                 />
-                <text x="6" y="45" fill="#0284C7" fontSize="2.8" fontStyle="italic" opacity="0.7">
+                <text
+                  x="5"
+                  y="46"
+                  fill={isDarkMode ? '#38BDF8' : '#0284C7'}
+                  fontSize="2.2"
+                  fontStyle="italic"
+                  opacity="0.85"
+                  fontWeight="bold"
+                >
                   Hooghly River (গঙ্গা)
                 </text>
-                <text x="6" y="22" fill="#0284C7" fontSize="2" opacity="0.6">
+                <text
+                  x="5"
+                  y="20"
+                  fill={isDarkMode ? '#7DD3FC' : '#0369A1'}
+                  fontSize="1.6"
+                  opacity="0.75"
+                >
                   Bagbazar Ghat ⛵
                 </text>
 
-                {/* Major Roads */}
-                <path
-                  d="M 42 10 L 42 90"
-                  stroke={isDarkMode ? '#522030' : '#D1C7B7'}
-                  strokeWidth="1.2"
-                  strokeDasharray="2 1"
-                />
-                <text x="44" y="55" fill={isDarkMode ? '#A8A29E' : '#78716C'} fontSize="2">
-                  Central Avenue / CR Avenue
+                {/* Major Arteries - Clean Highway Casing & Fill */}
+                {/* Central Avenue / Chittaranjan Ave */}
+                <path d="M 42 6 L 42 94" stroke={isDarkMode ? '#2F1B27' : '#FFFFFF'} strokeWidth="2.0" strokeLinecap="round" />
+                <path d="M 42 6 L 42 94" stroke={isDarkMode ? '#4A1D33' : '#E2D9CC'} strokeWidth="1.2" strokeLinecap="round" />
+                <text x="44" y="52" fill={isDarkMode ? '#9CA3AF' : '#8A8175'} fontSize="1.5" fontWeight="500">
+                  Central Avenue
                 </text>
 
-                {/* VIP Road */}
-                <path
-                  d="M 45 20 C 60 22, 75 28, 90 32"
-                  stroke={isDarkMode ? '#522030' : '#D1C7B7'}
-                  strokeWidth="1.5"
-                />
-                <text x="70" y="24" fill={isDarkMode ? '#A8A29E' : '#78716C'} fontSize="2">
-                  VIP Road (Lake Town)
+                {/* VIP Road / Ultadanga / Lake Town */}
+                <path d="M 45 18 C 60 21, 74 27, 94 32" stroke={isDarkMode ? '#2F1B27' : '#FFFFFF'} strokeWidth="2.2" strokeLinecap="round" />
+                <path d="M 45 18 C 60 21, 74 27, 94 32" stroke={isDarkMode ? '#4A1D33' : '#E2D9CC'} strokeWidth="1.3" strokeLinecap="round" />
+                <text x="68" y="23" fill={isDarkMode ? '#9CA3AF' : '#8A8175'} fontSize="1.5" fontWeight="500">
+                  VIP Road • Lake Town
                 </text>
 
-                {/* Gariahat / Rashbehari Avenue */}
-                <path
-                  d="M 20 70 L 80 70"
-                  stroke={isDarkMode ? '#522030' : '#D1C7B7'}
-                  strokeWidth="1.4"
-                />
-                <text x="56" y="68" fill={isDarkMode ? '#A8A29E' : '#78716C'} fontSize="2">
-                  Rashbehari Ave / Gariahat
+                {/* Rashbehari Avenue / Gariahat */}
+                <path d="M 18 69 L 85 69" stroke={isDarkMode ? '#2F1B27' : '#FFFFFF'} strokeWidth="2.2" strokeLinecap="round" />
+                <path d="M 18 69 L 85 69" stroke={isDarkMode ? '#4A1D33' : '#E2D9CC'} strokeWidth="1.3" strokeLinecap="round" />
+                <text x="56" y="67" fill={isDarkMode ? '#9CA3AF' : '#8A8175'} fontSize="1.5" fontWeight="500">
+                  Rashbehari Ave • Gariahat
                 </text>
 
-                {/* Metro Blue Line Overlay */}
+                {/* Shyambazar Five-Point Junction Marker */}
+                <circle cx="42" cy="18" r="1.4" fill={isDarkMode ? '#374151' : '#E5E7EB'} stroke="#9CA3AF" strokeWidth="0.4" />
+                <text x="44" y="16.5" fill={isDarkMode ? '#D1D5DB' : '#6B7280'} fontSize="1.4">
+                  Shyambazar 5-Point
+                </text>
+
+                {/* Metro Blue Line (Transit Layer) */}
                 {showMetroLines && (
-                  <g id="metro-blue-line">
+                  <g id="metro-blue-line-layer">
+                    {/* Outer Casing */}
                     <path
-                      d="M 42 12 L 42 42 L 38 60 L 36 85"
+                      d="M 42 10 L 42 42 L 38 60 L 36 86"
+                      stroke="#FFFFFF"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      opacity={isDarkMode ? '0.2' : '0.8'}
+                    />
+                    {/* Blue Core Track */}
+                    <path
+                      d="M 42 10 L 42 42 L 38 60 L 36 86"
                       stroke="#2563EB"
-                      strokeWidth="1.8"
+                      strokeWidth="1.4"
                       strokeLinecap="round"
                     />
-                    <circle cx="42" cy="18" r="1.2" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.8" />
-                    <text x="44" y="19" fill="#2563EB" fontSize="1.8" fontWeight="bold">Shyambazar</text>
-
-                    <circle cx="42" cy="45" r="1.2" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.8" />
-                    <text x="44" y="46" fill="#2563EB" fontSize="1.8" fontWeight="bold">Central / MG Rd</text>
-
-                    <circle cx="38" cy="65" r="1.2" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.8" />
-                    <text x="24" y="66" fill="#2563EB" fontSize="1.8" fontWeight="bold">Kalighat Metro</text>
+                    {/* Station Nodes */}
+                    <circle cx="42" cy="18" r="1.0" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.6" />
+                    <circle cx="42" cy="46" r="1.0" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.6" />
+                    <circle cx="38" cy="65" r="1.0" fill="#FFFFFF" stroke="#2563EB" strokeWidth="0.6" />
+                    <text x="25" y="66" fill="#2563EB" fontSize="1.5" fontWeight="bold">
+                      Kalighat Metro
+                    </text>
                   </g>
                 )}
               </g>
             )}
 
-            {/* Contai Geography */}
+            {/* Contai Real Geography & Coastline */}
             {activeCity === 'contai' && (
-              <g id="contai-landmarks">
+              <g id="contai-base-geography">
+                {/* Bay of Bengal Coastline */}
                 <path
-                  d="M 65 100 C 72 80, 80 65, 100 55 L 100 100 Z"
-                  fill="url(#seaGrad)"
+                  d="M 64 100 C 72 82, 80 66, 100 54 L 100 100 Z"
+                  fill="url(#contaiSea)"
+                  stroke={isDarkMode ? '#0284C7' : '#7DD3FC'}
+                  strokeWidth="0.6"
                 />
-                <text x="75" y="88" fill="#0284C7" fontSize="2.8" fontStyle="italic" opacity="0.8">
+                <text
+                  x="74"
+                  y="86"
+                  fill={isDarkMode ? '#38BDF8' : '#0284C7'}
+                  fontSize="2.4"
+                  fontStyle="italic"
+                  fontWeight="bold"
+                  opacity="0.85"
+                >
                   Bay of Bengal 🌊
                 </text>
 
-                <path
-                  d="M 42 38 C 50 48, 60 58, 80 75"
-                  stroke={isDarkMode ? '#522030' : '#D1C7B7'}
-                  strokeWidth="1.5"
-                />
-                <text x="52" y="52" fill={isDarkMode ? '#A8A29E' : '#78716C'} fontSize="2">
+                {/* Major Highways */}
+                {/* Junput Coastal Road */}
+                <path d="M 42 38 C 50 48, 60 58, 80 75" stroke={isDarkMode ? '#2F1B27' : '#FFFFFF'} strokeWidth="2.2" strokeLinecap="round" />
+                <path d="M 42 38 C 50 48, 60 58, 80 75" stroke={isDarkMode ? '#4A1D33' : '#E2D9CC'} strokeWidth="1.3" strokeLinecap="round" />
+                <text x="52" y="52" fill={isDarkMode ? '#9CA3AF' : '#8A8175'} fontSize="1.5" fontWeight="500">
                   Junput Coastal Road
                 </text>
 
-                <path
-                  d="M 10 30 L 90 42"
-                  stroke={isDarkMode ? '#522030' : '#D1C7B7'}
-                  strokeWidth="1.6"
-                />
-                <text x="20" y="28" fill={isDarkMode ? '#A8A29E' : '#78716C'} fontSize="2">
+                {/* NH-116B (Contai - Digha Highway) */}
+                <path d="M 12 30 L 92 42" stroke={isDarkMode ? '#2F1B27' : '#FFFFFF'} strokeWidth="2.4" strokeLinecap="round" />
+                <path d="M 12 30 L 92 42" stroke={isDarkMode ? '#4A1D33' : '#E2D9CC'} strokeWidth="1.4" strokeLinecap="round" />
+                <text x="20" y="27" fill={isDarkMode ? '#9CA3AF' : '#8A8175'} fontSize="1.5" fontWeight="500">
                   NH-116B (Contai - Digha)
+                </text>
+
+                {/* Contai Central Bus Stand Hub */}
+                <circle cx="42" cy="38" r="1.4" fill={isDarkMode ? '#374151' : '#E5E7EB'} stroke="#9CA3AF" strokeWidth="0.4" />
+                <text x="44" y="37" fill={isDarkMode ? '#D1D5DB' : '#6B7280'} fontSize="1.4">
+                  Town Bus Hub
                 </text>
               </g>
             )}
 
-            {/* Active Anchor Pin */}
+            {/* Active Anchor Pin (Pulsing Center Marker) */}
             {activeAnchor && (
-              <g id="anchor-pin" className="animate-bounce">
+              <g id="anchor-pin" className="transition-all duration-300">
                 <circle
                   cx={activeAnchor.city === 'kolkata' ? 47 : 48}
                   cy={activeAnchor.city === 'kolkata' ? 17 : 44}
-                  r="3.5"
+                  r="4.2"
                   fill="#991B1B"
-                  stroke="#FDE68A"
-                  strokeWidth="1.2"
+                  opacity="0.18"
+                  className="animate-ping"
                 />
                 <circle
                   cx={activeAnchor.city === 'kolkata' ? 47 : 48}
                   cy={activeAnchor.city === 'kolkata' ? 17 : 44}
-                  r="1.2"
-                  fill="#FFFDF9"
+                  r="2.6"
+                  fill="#991B1B"
+                  stroke="#FEF08A"
+                  strokeWidth="0.9"
+                />
+                <circle
+                  cx={activeAnchor.city === 'kolkata' ? 47 : 48}
+                  cy={activeAnchor.city === 'kolkata' ? 17 : 44}
+                  r="1.0"
+                  fill="#FFFFFF"
                 />
               </g>
             )}
 
-            {/* Connected Trip Polyline if Active Route exists */}
-            {activeTripPandalIds.length > 1 && (
-              <polyline
-                points={displayedPandals
-                  .filter((p) => activeTripPandalIds.includes(p.id))
-                  .map((p) => `${p.coordinates.mapX},${p.coordinates.mapY}`)
-                  .join(' ')}
-                fill="none"
-                stroke="#DC2626"
-                strokeWidth="1.5"
-                strokeDasharray="2.5 1.5"
-                className="animate-pulse"
-              />
+            {/* Active Route Polyline with Casing & Flow Direction */}
+            {routeSegments.length > 0 && (
+              <g id="active-route-trail">
+                {/* 1. Outer contrast casing to prevent road/water clashes */}
+                {routeSegments.map((seg, idx) => (
+                  <line
+                    key={`casing-${idx}`}
+                    x1={seg.fromX}
+                    y1={seg.fromY}
+                    x2={seg.toX}
+                    y2={seg.toY}
+                    stroke={isDarkMode ? '#1C1418' : '#FFFFFF'}
+                    strokeWidth="3.4"
+                    strokeLinecap="round"
+                  />
+                ))}
+
+                {/* 2. Core Route Path Line */}
+                {routeSegments.map((seg, idx) => (
+                  <line
+                    key={`core-${idx}`}
+                    x1={seg.fromX}
+                    y1={seg.fromY}
+                    x2={seg.toX}
+                    y2={seg.toY}
+                    stroke="#DC2626"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeDasharray="4 1"
+                  />
+                ))}
+
+                {/* 3. Directional Chevrons along Route */}
+                {routeSegments.map((seg, idx) => (
+                  <g
+                    key={`arrow-${idx}`}
+                    transform={`translate(${seg.midX}, ${seg.midY}) rotate(${seg.angleDeg})`}
+                  >
+                    <path
+                      d="M -1.2 -1.0 L 1.2 0 L -1.2 1.0 Z"
+                      fill="#DC2626"
+                      stroke="#FFFFFF"
+                      strokeWidth="0.3"
+                    />
+                  </g>
+                ))}
+              </g>
             )}
 
-            {/* Essential Places Layer Markers */}
+            {/* Essential Utility Places Markers (Secondary Icons) */}
             {displayedEssentialPlaces.map((place) => {
               const config = ESSENTIAL_CATEGORY_CONFIG[place.category];
               const isSelected = selectedEssentialPlace?.id === place.id;
@@ -813,45 +1030,59 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               return (
                 <g
                   key={place.id}
-                  id={`place-pin-${place.id}`}
-                  onClick={() => setSelectedEssentialPlace(place)}
+                  onClick={() => {
+                    setSelectedEssentialPlace(place);
+                    setSelectedPandalId('');
+                  }}
                   className="cursor-pointer transition-transform duration-200 hover:scale-125"
                   style={{ transformOrigin: `${place.mapX}px ${place.mapY}px` }}
                 >
                   <circle
                     cx={place.mapX}
                     cy={place.mapY}
-                    r={isSelected ? 3.8 : 2.5}
+                    r={isSelected ? 3.0 : 1.9}
                     fill={config.color}
                     stroke="#FFFFFF"
-                    strokeWidth={isSelected ? 1.2 : 0.6}
-                    className="shadow-sm"
+                    strokeWidth={isSelected ? 1.0 : 0.5}
+                    className="shadow-xs"
                   />
                   <text
                     x={place.mapX}
-                    y={place.mapY + 0.9}
+                    y={place.mapY + 0.7}
                     textAnchor="middle"
-                    fontSize={isSelected ? '2.2' : '1.6'}
+                    fontSize={isSelected ? '2.0' : '1.3'}
                   >
                     {config.icon}
                   </text>
                   {isSelected && (
-                    <text
-                      x={place.mapX}
-                      y={place.mapY - 3.8}
-                      textAnchor="middle"
-                      fill={config.color}
-                      fontSize="1.9"
-                      fontWeight="bold"
-                    >
-                      {place.name.split(' ')[0]}
-                    </text>
+                    <g>
+                      <rect
+                        x={place.mapX - 9}
+                        y={place.mapY - 4.8}
+                        width="18"
+                        height="3.0"
+                        rx="1.0"
+                        fill={isDarkMode ? '#1E171D' : '#FFFFFF'}
+                        stroke={config.color}
+                        strokeWidth="0.4"
+                      />
+                      <text
+                        x={place.mapX}
+                        y={place.mapY - 2.8}
+                        textAnchor="middle"
+                        fill={config.color}
+                        fontSize="1.6"
+                        fontWeight="bold"
+                      >
+                        {place.name.split(' ')[0]}
+                      </text>
+                    </g>
                   )}
                 </g>
               );
             })}
 
-            {/* Suggested Central Meeting Point Pin on Map */}
+            {/* Suggested Central Meeting Point Pin */}
             {suggestedMeetingPoint && (
               <g
                 id="suggested-meeting-point-pin"
@@ -864,115 +1095,155 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <circle
                   cx={suggestedMeetingPoint.mapX}
                   cy={suggestedMeetingPoint.mapY}
-                  r={6}
+                  r={5.0}
                   fill="#D97706"
-                  opacity="0.25"
+                  opacity="0.2"
                   className="animate-ping"
                 />
                 <circle
                   cx={suggestedMeetingPoint.mapX}
                   cy={suggestedMeetingPoint.mapY}
-                  r={3.6}
+                  r={2.8}
                   fill="#D97706"
                   stroke="#FFFFFF"
-                  strokeWidth="1"
+                  strokeWidth="0.8"
                 />
                 <text
                   x={suggestedMeetingPoint.mapX}
-                  y={suggestedMeetingPoint.mapY + 1.2}
+                  y={suggestedMeetingPoint.mapY + 1.0}
                   textAnchor="middle"
-                  fontSize="2.4"
+                  fontSize="1.8"
                 >
                   🎯
-                </text>
-                <text
-                  x={suggestedMeetingPoint.mapX}
-                  y={suggestedMeetingPoint.mapY - 4.5}
-                  textAnchor="middle"
-                  fill="#D97706"
-                  fontSize="1.9"
-                  fontWeight="bold"
-                >
-                  Meeting Point
                 </text>
               </g>
             )}
 
-            {/* Interactive Pandal Pins */}
-            {displayedPandals.map((pandal) => {
+            {/* Pandal Markers with Distinct Hierarchy & Collision Avoidance */}
+            {positionedPandals.map(({ pandal, x, y, isMustVisit, isInRoute, routeIndex }) => {
               const isSelected = pandal.id === activePandal?.id;
-              const isMustVisit = pandal.recommendationLevel === 'Must Visit';
-              const densityInfo = getCrowdDensityInfo(pandal);
-              const pinColor = densityInfo.colorHex;
+              const recLevel = pandal.recommendationLevel;
+
+              // Marker hierarchy styling
+              let pinBg = '#64748B'; // default
+              let pinBorder = '#FFFFFF';
+              let pinRadius = 2.4;
+              let iconChar = '•';
+
+              if (recLevel === 'Must Visit') {
+                pinBg = '#991B1B'; // PujaTrip royal crimson
+                pinBorder = isSelected ? '#FDE68A' : '#FEF08A';
+                pinRadius = isSelected ? 3.6 : 3.0;
+                iconChar = '✦';
+              } else if (recLevel === 'Highly Recommended') {
+                pinBg = '#D97706'; // warm gold
+                pinBorder = isSelected ? '#FDE68A' : '#FFFFFF';
+                pinRadius = isSelected ? 3.3 : 2.7;
+                iconChar = '★';
+              } else if (recLevel === 'Good') {
+                pinBg = '#059669'; // emerald
+                pinBorder = '#FFFFFF';
+                pinRadius = isSelected ? 3.0 : 2.4;
+                iconChar = '✓';
+              }
+
+              // Route stops show sequence number
+              const stopNumber = isInRoute ? routeIndex + 1 : null;
+              const showLabel = shouldRenderLabel({ pandal, isMustVisit, isInRoute });
 
               return (
                 <g
                   key={pandal.id}
                   onClick={() => {
                     setSelectedPandalId(pandal.id);
+                    setShowPandalSheet(true);
                     setSelectedEssentialPlace(null);
+                    playKanshorBell(0.4);
                   }}
                   className="cursor-pointer transition-transform duration-200"
-                  style={{ transformOrigin: `${pandal.coordinates.mapX}px ${pandal.coordinates.mapY}px` }}
+                  style={{ transformOrigin: `${x}px ${y}px` }}
                 >
-                  {/* Pulsing ring for Selected or Must Visit */}
-                  {(isMustVisit || isSelected) && (
+                  {/* Outer pulse aura for Selected Pandal */}
+                  {isSelected && (
                     <circle
-                      cx={pandal.coordinates.mapX}
-                      cy={pandal.coordinates.mapY}
-                      r={isSelected ? 6 : 4}
-                      fill={pinColor}
+                      cx={x}
+                      cy={y}
+                      r="5.8"
+                      fill="#991B1B"
                       opacity="0.3"
                       className="animate-ping"
                     />
                   )}
 
-                  {/* Outer Pin Body with Color-Coded Green/Yellow/Red Density */}
+                  {/* Marker Circle */}
                   <circle
-                    cx={pandal.coordinates.mapX}
-                    cy={pandal.coordinates.mapY}
-                    r={isSelected ? 4.6 : 3.4}
-                    fill={pinColor}
-                    stroke={isSelected ? '#FDE68A' : '#FFFFFF'}
-                    strokeWidth={isSelected ? 1.4 : 0.9}
-                    className="shadow-md"
+                    cx={x}
+                    cy={y}
+                    r={pinRadius}
+                    fill={pinBg}
+                    stroke={isSelected ? '#FDE68A' : pinBorder}
+                    strokeWidth={isSelected ? 1.2 : 0.8}
+                    className="shadow-sm"
                   />
 
-                  {/* Inner Eye / Star Dot */}
-                  <circle
-                    cx={pandal.coordinates.mapX}
-                    cy={pandal.coordinates.mapY}
-                    r={isSelected ? 1.8 : 1.2}
-                    fill="#FFFDF9"
-                  />
+                  {/* Inner Symbol / Stop Number */}
+                  {stopNumber ? (
+                    <text
+                      x={x}
+                      y={y + 0.9}
+                      textAnchor="middle"
+                      fill="#FFFFFF"
+                      fontSize="2.1"
+                      fontWeight="900"
+                    >
+                      {stopNumber}
+                    </text>
+                  ) : (
+                    <text
+                      x={x}
+                      y={y + 0.8}
+                      textAnchor="middle"
+                      fill={isMustVisit ? '#FEF08A' : '#FFFFFF'}
+                      fontSize={isMustVisit ? '2.1' : '1.8'}
+                      fontWeight="bold"
+                    >
+                      {iconChar}
+                    </text>
+                  )}
 
-                  {/* Traffic Light Mini Beacon Dot */}
-                  <circle
-                    cx={pandal.coordinates.mapX + (isSelected ? 3.4 : 2.5)}
-                    cy={pandal.coordinates.mapY - (isSelected ? 3.4 : 2.5)}
-                    r={isSelected ? 1.5 : 1.1}
-                    fill={pinColor}
-                    stroke="#FFFFFF"
-                    strokeWidth={0.5}
-                  />
-
-                  {/* Label text */}
-                  <text
-                    x={pandal.coordinates.mapX}
-                    y={pandal.coordinates.mapY - 4.8}
-                    textAnchor="middle"
-                    fill={isDarkMode ? '#FEF08A' : '#78350F'}
-                    fontSize={isSelected ? '2.8' : '2.1'}
-                    fontWeight="bold"
-                    className="drop-shadow-sm select-none"
-                  >
-                    {pandal.name.split(' ')[0]}
-                  </text>
+                  {/* Smart Label (Rendered only when priority matches to avoid clutter) */}
+                  {showLabel && (
+                    <g>
+                      {/* Label Card Casing */}
+                      <rect
+                        x={x - 11}
+                        y={y - 5.5}
+                        width="22"
+                        height="3.3"
+                        rx="1.2"
+                        fill={isSelected ? (isDarkMode ? '#2A1B24' : '#FFFFFF') : (isDarkMode ? '#1E171D' : '#FFFFFF')}
+                        stroke={isSelected ? '#DC2626' : (isDarkMode ? '#472236' : '#E5E7EB')}
+                        strokeWidth={isSelected ? 0.8 : 0.4}
+                        className="shadow-xs"
+                      />
+                      <text
+                        x={x}
+                        y={y - 3.2}
+                        textAnchor="middle"
+                        fill={isSelected ? '#991B1B' : (isDarkMode ? '#FEF08A' : '#451A03')}
+                        fontSize="1.8"
+                        fontWeight={isSelected ? '900' : 'bold'}
+                        className="select-none"
+                      >
+                        {pandal.name.split(' ')[0]}
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
 
-            {/* Real-time Group Member Pins on SVG Map (with SOS/Lost visual cues) */}
+            {/* Live Squad Friends Layer (Visually distinct avatar markers) */}
             {showFriendsOnMap &&
               activeFriendsOnMap.map((friend) => {
                 const isMe = friend.userId === currentUser.id;
@@ -984,20 +1255,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 const isFriendSOS = activeSOSAlerts.some((s) => s.userId === friend.userId);
                 const isFriendLost = activeLostAlerts.some((l) => l.userId === friend.userId);
 
+                const ringColor = isFriendSOS
+                  ? '#DC2626'
+                  : isFriendLost
+                  ? '#D97706'
+                  : isMe
+                  ? '#2563EB'
+                  : friend.isStationary
+                  ? '#0D9488'
+                  : '#10B981';
+
                 return (
                   <g
                     key={`friend-pin-${friend.userId}`}
                     onClick={() => setSelectedFriend(friend)}
-                    className="cursor-pointer transition-transform duration-300 hover:scale-125"
+                    className="cursor-pointer transition-transform duration-200 hover:scale-125"
                     style={{ transformOrigin: `${coords.mapX}px ${coords.mapY}px` }}
                   >
-                    {/* Pulsing halo ring */}
+                    {/* Pulsing ring for active tracking */}
                     <circle
                       cx={coords.mapX}
                       cy={coords.mapY}
-                      r={isFriendSOS ? 9 : isFriendLost ? 7.5 : isMe ? 6.5 : 5.5}
-                      fill={isFriendSOS ? '#DC2626' : isFriendLost ? '#D97706' : isMe ? '#3B82F6' : '#10B981'}
-                      opacity={isFriendSOS ? '0.6' : '0.35'}
+                      r="4.8"
+                      fill={ringColor}
+                      opacity={isFriendSOS ? '0.6' : '0.25'}
                       className="animate-ping"
                     />
 
@@ -1005,72 +1286,182 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                     <circle
                       cx={coords.mapX}
                       cy={coords.mapY}
-                      r={isMe ? 4.6 : 3.8}
-                      fill={isFriendSOS ? '#DC2626' : isFriendLost ? '#D97706' : isMe ? '#2563EB' : '#059669'}
-                      stroke={isFriendSOS ? '#FDE68A' : '#FFFFFF'}
-                      strokeWidth={isFriendSOS ? 1.8 : 1.2}
-                      className="shadow-lg"
+                      r="3.2"
+                      fill={ringColor}
+                      stroke="#FFFFFF"
+                      strokeWidth="0.9"
                     />
 
-                    {/* Emoji Icon */}
+                    {/* Emoji / Indicator */}
                     <text
                       x={coords.mapX}
-                      y={coords.mapY + 1.2}
+                      y={coords.mapY + 1.0}
                       textAnchor="middle"
-                      fontSize={isMe ? '2.8' : '2.3'}
+                      fontSize="2.1"
                     >
                       {isFriendSOS ? '🚨' : isFriendLost ? '🧭' : avatar.emoji}
                     </text>
 
-                    {/* Friend Name Label */}
+                    {/* Compact Friend Name Pill with Status Dot */}
                     <rect
-                      x={coords.mapX - 8}
-                      y={coords.mapY + 5}
-                      width="16"
-                      height="3.6"
-                      rx="1.5"
-                      fill={isDarkMode ? '#1C1418' : '#FFFFFF'}
-                      stroke={
-                        isFriendSOS
-                          ? '#DC2626'
-                          : isFriendLost
-                          ? '#D97706'
-                          : isMe
-                          ? '#2563EB'
-                          : friend.isStationary
-                          ? '#0D9488'
-                          : '#059669'
-                      }
-                      strokeWidth="0.5"
-                      opacity="0.95"
+                      x={coords.mapX - 7.5}
+                      y={coords.mapY + 4.0}
+                      width="15"
+                      height="2.8"
+                      rx="1.0"
+                      fill={isDarkMode ? '#1E171D' : '#FFFFFF'}
+                      stroke={ringColor}
+                      strokeWidth="0.4"
                     />
                     <text
                       x={coords.mapX}
-                      y={coords.mapY + 7.5}
+                      y={coords.mapY + 6.0}
                       textAnchor="middle"
-                      fill={isFriendSOS ? '#DC2626' : isDarkMode ? '#FFFFFF' : '#1C1418'}
-                      fontSize="1.8"
+                      fill={isFriendSOS ? '#DC2626' : (isDarkMode ? '#FFFFFF' : '#1C1418')}
+                      fontSize="1.5"
                       fontWeight="bold"
                     >
-                      {isFriendSOS
-                        ? '🆘 SOS'
-                        : isFriendLost
-                        ? 'LOST'
-                        : isMe
-                        ? 'YOU'
-                        : `${friend.userName.split(' ')[0]}${friend.isStationary ? ' 💤' : ''}`}
+                      {isMe ? 'You' : friend.userName.split(' ')[0]}
                     </text>
                   </g>
                 );
               })}
           </svg>
         </div>
+
+        {/* 3. Selected Pandal Floating Information Card (Clean, compact bottom sheet) */}
+        {activePandal && showPandalSheet && (
+          <div
+            id="map-pandal-floating-card"
+            className="absolute bottom-3 left-3 right-3 z-30 animate-slideUp pointer-events-auto"
+          >
+            <div
+              className={`p-3 rounded-2xl border shadow-xl backdrop-blur-md flex flex-col gap-2.5 transition-all ${
+                isDarkMode
+                  ? 'bg-stone-900/98 border-stone-700/80 text-white'
+                  : 'bg-white/98 border-stone-200/90 text-stone-900'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                {/* Pandal Thumbnail Image with Rating Tag */}
+                <div
+                  onClick={() => onSelectPandal(activePandal)}
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden shrink-0 relative shadow-sm cursor-pointer group bg-stone-200"
+                >
+                  <img
+                    src={activePandal.heroImage}
+                    alt={activePandal.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    referrerPolicy="no-referrer"
+                    onError={handleImageError}
+                  />
+                  <span className="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/75 px-1 rounded tabular-nums flex items-center gap-0.5">
+                    <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                    <span>{activePandal.overallQualityScore.toFixed(1)}</span>
+                  </span>
+                </div>
+
+                {/* Middle Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`text-micro font-bold px-2 py-0.5 rounded-full ${
+                        activePandal.recommendationLevel === 'Must Visit'
+                          ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/25'
+                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                      }`}
+                    >
+                      {activePandal.recommendationLevel}
+                    </span>
+
+                    {/* Proximity / Direction from Active Anchor */}
+                    {activePandalRank && (
+                      <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full tabular-nums">
+                        {activePandalRank.arrowIcon} {activePandalRank.direction} • {activePandalRank.formattedStraightDistance}
+                      </span>
+                    )}
+                  </div>
+
+                  <h4
+                    onClick={() => onSelectPandal(activePandal)}
+                    className="font-display font-black text-small sm:text-h4 text-stone-900 dark:text-white truncate mt-0.5 cursor-pointer hover:text-[#DC2626]"
+                  >
+                    {activePandal.name}
+                  </h4>
+                  <p className="font-bengali text-micro text-[#DC2626] font-bold truncate">
+                    {activePandal.bengaliName}
+                  </p>
+
+                  {/* Transit & Queue */}
+                  <div className="text-[11px] text-stone-500 dark:text-stone-400 flex items-center gap-2 mt-1">
+                    <span>🚶 ~{activePandalRank?.estimatedWalkingMinutes || 8}m walk</span>
+                    <span>•</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                      {activePandal.queueWaitMinutes}m wait
+                    </span>
+                  </div>
+                </div>
+
+                {/* Close Button */}
+                <button
+                  onClick={() => setShowPandalSheet(false)}
+                  className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
+                  title="Dismiss Card"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Action Buttons Row (Explore, Add to Route, Navigate) */}
+              <div className="flex items-center gap-2 pt-1 border-t border-stone-100 dark:border-stone-800/80">
+                <button
+                  onClick={() => onSelectPandal(activePandal)}
+                  className="flex-1 py-1.5 px-3 rounded-xl bg-gradient-to-r from-[#991B1B] to-[#DC2626] text-white font-bold text-micro shadow-sm flex items-center justify-center gap-1 hover:brightness-110 active:scale-95 transition-all"
+                >
+                  <span>Explore Details</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                {onToggleTripPandal && (
+                  <button
+                    onClick={() => onToggleTripPandal(activePandal.id)}
+                    className={`py-1.5 px-3 rounded-xl font-bold text-micro border flex items-center justify-center gap-1 transition-all ${
+                      isCurrentPandalInRoute
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-amber-100/60'
+                    }`}
+                  >
+                    {isCurrentPandalInRoute ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>In Route</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add to Route</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleNavigateToCoords(activePandal.latitude, activePandal.longitude)}
+                  className="py-1.5 px-3 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-micro flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Navigation className="w-3.5 h-3.5 text-[#DC2626]" />
+                  <span>Navigate</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 2.1 Quick Squad Location Strip (Members with Distance, Status & SOS/Lost badge) */}
+      {/* 2.1 Quick Squad Location Strip */}
       {memberLocations.length > 0 && (
         <div
-          className={`p-3 rounded-2xl border flex items-center justify-between gap-2 overflow-x-auto no-scrollbar transition-all ${
+          className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 overflow-x-auto no-scrollbar transition-all ${
             isDarkMode ? 'bg-[#22161E] border-stone-800' : 'bg-stone-50 border-stone-200'
           }`}
         >
@@ -1108,17 +1499,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                         : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-900 dark:text-emerald-200 hover:scale-105'
                       : 'bg-stone-200/60 dark:bg-stone-800 border-stone-300 dark:border-stone-700 text-stone-600 dark:text-stone-400 opacity-80'
                   }`}
-                  title={`${m.userName} • ${
-                    isSOS
-                      ? '🚨 EMERGENCY SOS ACTIVE'
-                      : isLost
-                      ? '🧭 Marked as Separated/Lost'
-                      : isSharing
-                      ? isStationary
-                        ? `Stationary in queue (${m.stationaryDurationMinutes || 5}m)`
-                        : `${m.formattedDistance || 'Nearby'} (${m.direction})`
-                      : 'Location Off'
-                  }`}
                 >
                   <span className="text-base">{avatar.emoji}</span>
                   <div className="text-left leading-tight">
@@ -1137,11 +1517,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                         : 'Off'}
                     </span>
                   </div>
-                  {isSharing && !isSOS && !isLost && (
-                    <span className={isStationary ? 'text-teal-600 font-bold' : 'text-emerald-600 font-bold'}>
-                      {isStationary ? '💤' : '📍'}
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -1153,7 +1528,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {selectedEssentialPlace && (
         <div
           id="selected-essential-place-card"
-          className={`p-4 rounded-3xl border shadow-lg transition-all animate-scaleUp ${
+          className={`p-3.5 rounded-2xl border shadow-lg transition-all animate-scaleUp ${
             isDarkMode
               ? 'bg-[#2A1C22] border-stone-700 text-white'
               : 'bg-white border-stone-200 text-stone-900'
@@ -1162,7 +1537,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 shadow-sm"
+                className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-xs"
                 style={{
                   backgroundColor: `${ESSENTIAL_CATEGORY_CONFIG[selectedEssentialPlace.category].color}20`,
                 }}
@@ -1202,11 +1577,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                     Landmark: {selectedEssentialPlace.landmark}
                   </p>
                 )}
-                {selectedEssentialPlace.details && (
-                  <p className="text-micro opacity-85 mt-0.5">
-                    {selectedEssentialPlace.details}
-                  </p>
-                )}
               </div>
             </div>
 
@@ -1221,7 +1591,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               {selectedEssentialPlace.phone && (
                 <a
                   href={`tel:${selectedEssentialPlace.phone}`}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-micro flex items-center justify-center gap-1 shadow-sm"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-micro flex items-center justify-center gap-1 shadow-xs"
                 >
                   <Phone className="w-3.5 h-3.5" />
                   <span>Call</span>
@@ -1235,7 +1605,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                     selectedEssentialPlace.longitude
                   )
                 }
-                className="px-3.5 py-2 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold text-small flex items-center gap-1 shadow-sm"
+                className="px-3 py-1.5 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white font-bold text-micro flex items-center gap-1 shadow-xs"
               >
                 <Navigation className="w-3.5 h-3.5" />
                 <span>Navigate</span>
@@ -1245,104 +1615,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </div>
       )}
 
-      {/* 3. Bottom Card for Selected Pandal with Live Proximity & Bearing */}
-      {activePandal && (
-        <div
-          id="map-pandal-sheet"
-          className={`p-3.5 rounded-3xl border shadow-lg transition-all ${
-            isDarkMode
-              ? 'bg-[#281B23] border-[#F59E0B]/30 text-white'
-              : 'bg-white border-[#D97706]/30 text-stone-900'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            {/* Image Thumbnail */}
-            <div
-              onClick={() => onSelectPandal(activePandal)}
-              className="w-18 h-18 rounded-2xl overflow-hidden shrink-0 relative shadow-md cursor-pointer group"
-            >
-              <img
-                src={activePandal.heroImage}
-                alt={activePandal.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                referrerPolicy="no-referrer"
-              />
-              <span className="absolute bottom-1 left-1 text-micro font-bold text-white bg-black/70 px-1 rounded tabular-nums">
-                ⭐ {activePandal.overallQualityScore.toFixed(1)}
-              </span>
-            </div>
-
-            {/* Middle Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span
-                  className={`text-micro font-bold px-2 py-0.5 rounded-full ${
-                    activePandal.recommendationLevel === 'Must Visit'
-                      ? 'bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30'
-                      : 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
-                  }`}
-                >
-                  {activePandal.recommendationLevel}
-                </span>
-
-                {/* Proximity & Direction to active Anchor */}
-                {activePandalRank && (
-                  <span className="text-micro font-bold text-stone-700 dark:text-stone-200 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full tabular-nums flex items-center gap-1">
-                    <span>{activePandalRank.arrowIcon}</span>
-                    <span>{activePandalRank.direction}</span>
-                    <span className="text-stone-400">•</span>
-                    <span>{activePandalRank.formattedStraightDistance}</span>
-                  </span>
-                )}
-              </div>
-
-              <h4
-                onClick={() => onSelectPandal(activePandal)}
-                className="font-display font-bold text-h4 text-stone-900 dark:text-white truncate mt-0.5 cursor-pointer hover:text-[#DC2626]"
-              >
-                {activePandal.name}
-              </h4>
-              <p className="font-bengali-serif text-small text-[#DC2626] font-bold truncate">
-                {activePandal.bengaliName}
-              </p>
-
-              {/* Transit / Walking badge */}
-              {activePandalRank && (
-                <div className="text-micro text-stone-500 dark:text-stone-400 flex items-center gap-2 mt-1">
-                  <span>🚶 Est. Walk: ~{activePandalRank.estimatedWalkingMinutes} mins ({activePandalRank.formattedWalkingDistance})</span>
-                  <span>•</span>
-                  <span className="text-amber-600 font-semibold">{activePandal.queueWaitMinutes}m wait</span>
-                </div>
-              )}
-            </div>
-
-            {/* View Button */}
-            <button
-              onClick={() => onSelectPandal(activePandal)}
-              className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-[#991B1B] to-[#DC2626] text-white font-bold text-btn shadow-md flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shrink-0 self-center"
-            >
-              <span>View</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Color-Coded Green/Yellow/Red Crowd Density Indicator for Selected Pandal */}
-          <CrowdDensityVisualIndicator
-            pandal={activePandal}
-            variant="compact"
-            isDarkMode={isDarkMode}
-            className="mt-2.5"
-          />
-        </div>
-      )}
-
-      {/* 4. Ranked "Nearby Worthwhile Pandals" Drawer Panel */}
+      {/* 4. Ranked Nearby Worthwhile Pandals Drawer */}
       <section
         id="nearby-worthwhile-section"
-        className={`p-4 rounded-3xl border shadow-sm space-y-3 ${
+        className={`p-4 rounded-3xl border shadow-xs space-y-3 ${
           isDarkMode
             ? 'bg-[#281B23] border-[#F59E0B]/25 text-white'
-            : 'bg-white border-[#D97706]/25 text-stone-900'
+            : 'bg-white border-[#D97706]/20 text-stone-900'
         }`}
       >
         <div className="flex items-center justify-between">
@@ -1353,7 +1632,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 Nearby Worthwhile Pandals
               </h3>
               <p className="text-micro text-stone-500 font-medium">
-                Ranked for quality & proximity from <strong>{activeAnchor?.name.split('(')[0]}</strong>
+                Ranked from <strong>{activeAnchor?.name.split('(')[0]}</strong>
               </p>
             </div>
           </div>
@@ -1383,13 +1662,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             return (
               <div
                 key={rankResult.pandal.id}
-                onClick={() => setSelectedPandalId(rankResult.pandal.id)}
+                onClick={() => {
+                  setSelectedPandalId(rankResult.pandal.id);
+                  setShowPandalSheet(true);
+                  handleNavigateToCoords(rankResult.pandal.latitude, rankResult.pandal.longitude);
+                }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                   isTarget
-                    ? 'border-[#DC2626] bg-[#DC2626]/10 shadow-sm'
+                    ? 'border-[#DC2626] bg-[#DC2626]/10 shadow-xs'
                     : isDarkMode
                     ? 'border-stone-800 bg-[#1C1418] hover:bg-[#3B1324]/60'
-                    : 'border-stone-100 bg-stone-50 hover:bg-[#FEF3C7]/50'
+                    : 'border-stone-100 bg-stone-50 hover:bg-[#FEF3C7]/40'
                 }`}
               >
                 {/* Rank Number + Details */}
@@ -1397,7 +1680,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   <div
                     className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-btn shrink-0 tabular-nums ${
                       idx === 0
-                        ? 'bg-[#DC2626] text-white shadow-sm'
+                        ? 'bg-[#DC2626] text-white shadow-xs'
                         : idx === 1
                         ? 'bg-[#D97706] text-white'
                         : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300'
@@ -1460,7 +1743,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         <div className="pt-2 border-t border-stone-200 dark:border-stone-800 flex items-center justify-between text-micro text-stone-500">
           <span className="flex items-center gap-1">
             <Info className="w-3 h-3 text-stone-400" />
-            <span>Sample calculation based on composite quality & urban walking model</span>
+            <span>Composite quality & walking model</span>
           </span>
           <button
             onClick={() => onSelectPandal(activePandal)}

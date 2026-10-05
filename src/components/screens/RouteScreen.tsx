@@ -48,6 +48,7 @@ import { RouteOptimizationModal } from '../trip/RouteOptimizationModal';
 import { PandalChecklist } from '../trip/PandalChecklist';
 import { FestiveCameraModal } from '../pandal/FestiveCameraModal';
 import { RouteShareModal } from '../trip/RouteShareModal';
+import { DarshanCompletionTracker } from '../trip/DarshanCompletionTracker';
 import { evaluateDynamicReplanning, evaluateRunningLateAndFeasibility } from '../../services/dynamicRouteReplanner';
 import { getCachedWeatherSync } from '../../services/weatherService';
 import confetti from 'canvas-confetti';
@@ -577,6 +578,16 @@ export const RouteScreen: React.FC<RouteScreenProps> = ({
         </button>
       </div>
 
+      {/* 5B. Dedicated Darshan Completion Progress Bar & Percentage Tracker */}
+      <DarshanCompletionTracker
+        trip={activeTrip}
+        pandals={sequencePandals}
+        visitedList={visitedList}
+        onToggleVisited={onToggleVisited}
+        onOpenSharePoster={handleShareDeepLink}
+        isDarkMode={isDarkMode}
+      />
+
       {/* 6A. Dedicated Trip Summary Section (WGS-84 Coordinate Distance & Travel Time Engine) */}
       <CoordinateTripSummarySection
         pandals={sequencePandals}
@@ -940,6 +951,7 @@ export const RouteScreen: React.FC<RouteScreenProps> = ({
         sequencePandals={sequencePandals}
         plannedItinerary={plannedItinerary}
         activeCity={activeCity}
+        visitedList={visitedList}
         isDarkMode={isDarkMode}
       />
 

@@ -91,9 +91,9 @@ export const CreateTripModal: React.FC<CreateTripModalProps> = ({
     // Default initial selection for active city
     if (city === 'contai') {
       return [
-        'contai-central-bus-stand',
+        'contai-nandanik',
+        'contai-youth',
         'contai-sabuj-sangha',
-        'contai-highschool-math',
       ];
     }
     return [
@@ -118,9 +118,9 @@ export const CreateTripModal: React.FC<CreateTripModalProps> = ({
       setName('Contai Coastal & Terracotta Safari');
       setBengaliName('কাঁথি কোস্টাল ও পোড়ামাটি শিল্প সাফারি');
       setSelectedPandalIds([
-        'contai-central-bus-stand',
+        'contai-nandanik',
+        'contai-youth',
         'contai-sabuj-sangha',
-        'contai-highschool-math',
       ]);
       setPreferredTransport('mixed');
     } else {

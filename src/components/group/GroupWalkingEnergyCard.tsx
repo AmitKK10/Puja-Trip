@@ -48,6 +48,8 @@ export const GroupWalkingEnergyCard: React.FC<GroupWalkingEnergyCardProps> = ({
   );
 
   useEffect(() => {
+    setWalkingStats(getWalkingSessionStats(tripId));
+
     const handleStatsUpdated = (e: Event) => {
       const customEvent = e as CustomEvent<WalkingSessionStats>;
       if (customEvent.detail) setWalkingStats(customEvent.detail);

@@ -85,6 +85,8 @@ export const WhatShouldWeDoNowCard: React.FC<WhatShouldWeDoNowCardProps> = ({
   );
 
   useEffect(() => {
+    setWalkingStats(getWalkingSessionStats(activeTrip?.id));
+
     const handleStatsUpdated = (e: Event) => {
       const customEvent = e as CustomEvent<WalkingSessionStats>;
       if (customEvent.detail) setWalkingStats(customEvent.detail);

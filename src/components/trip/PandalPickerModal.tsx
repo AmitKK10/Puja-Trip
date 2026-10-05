@@ -5,6 +5,7 @@ import {
   RecommendationLevel,
   UserPreferences,
 } from '../../types';
+import { handleImageError } from '../../utils/imageFallback';
 import {
   Search,
   X,
@@ -195,6 +196,7 @@ export const PandalPickerModal: React.FC<PandalPickerModalProps> = ({
                       alt={pandal.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={handleImageError}
                     />
                   </div>
 

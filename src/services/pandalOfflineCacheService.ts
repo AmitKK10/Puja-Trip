@@ -78,7 +78,9 @@ function writeCacheMap(map: Record<string, CachedPandalRecord>): void {
  */
 function notifyCacheSubscribers(): void {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('pujatrip:offline-cache-change'));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('pujatrip:offline-cache-change'));
+    }, 0);
   }
 }
 
@@ -275,10 +277,9 @@ export function setSimulatedCrowdNetworkJam(enabled: boolean): void {
 export function registerPujaTripServiceWorker(): void {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
-  // Don't block initial render; register on window load
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { scope: '/' })
       .then((registration) => {
         console.log('[PujaTrip SW] Registered successfully with scope:', registration.scope);
       })
@@ -286,5 +287,11 @@ export function registerPujaTripServiceWorker(): void {
         // In certain iframe preview containers, Service Workers may be restricted by sandbox flags
         console.info('[PujaTrip SW] Notice (SW sandbox or unsupported):', error.message);
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    register();
+  } else {
+    window.addEventListener('load', register);
+  }
 }

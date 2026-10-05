@@ -67,11 +67,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'আবহমান • মানুষের চেতনার চিরন্তন যাত্রা ও বাঁশের শিল্পকলা',
     description: 'Tala Park Prattyay is regarded as one of Kolkata\'s most intellectually captivating theme pandals. Blending modern architectural discipline with timeless spiritual symbolism, it has repeatedly clinched top Asian Paints and Biswa Bangla Sharad Samman awards.',
     fullHistory: 'Founded in 1969 amidst the green expanse of Tala Park, the puja revolutionized experimental festival architecture in Bengal under visionary curation.',
-    heroImage: 'https://cdn.trekgo.in/blog/durga-puja-pandals-in-kolkata/pandal-photography.jpg',
+    heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
     photos: [
-      'https://cdn.trekgo.in/blog/durga-puja-pandals-in-kolkata/pandal-photography.jpg',
-      'https://cdn.trekgo.in/blog/durga-puja-pandals-in-kolkata/pandal-photography.jpg',
-      'https://cdn.trekgo.in/blog/durga-puja-pandals-in-kolkata/pandal-photography.jpg',
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
+    ],
+
+    images: [
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
     ],
     audioDurationSeconds: 150,
     highlights: [
@@ -161,11 +163,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'ভেনিসের সেন্ট মার্কস ব্যাসিলিকা ও স্বর্ণালঙ্কৃত প্রতিমা',
     description: 'Renowned as Eastern India\'s most extravagant Durga Puja presentation. Every year, Sree Bhumi recreates iconic global architecture paired with Maa Durga adorned in genuine gold and diamond jewellery designed by premier Kolkata artisans.',
     fullHistory: 'Founded in 1969 under the patronship of Sujit Bose, Sree Bhumi has transformed from a neighborhood gathering into a cultural phenomenon drawing over 1.5 million visitors each year.',
-    heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
+    heroImage: 'https://i.pinimg.com/736x/3f/33/d8/3f33d81ed81ce21cc64e1200d2cde23f.jpg',
     photos: [
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPc1mvwM7ssb22LuzadiZpBLZrv8tjoRWeGNISg16b6w&s=10',
+      'https://i.pinimg.com/736x/3f/33/d8/3f33d81ed81ce21cc64e1200d2cde23f.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/ShrI_Bhumi_Sporting_Club_2022_Durga_Puja_07.jpg/1280px-ShrI_Bhumi_Sporting_Club_2022_Durga_Puja_07.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/b/b6/Shree_bhumi_Durga_puja_2022_08.jpg',
+    ],
+
+    images: [
+      'https://i.pinimg.com/736x/3f/33/d8/3f33d81ed81ce21cc64e1200d2cde23f.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/ShrI_Bhumi_Sporting_Club_2022_Durga_Puja_07.jpg/1280px-ShrI_Bhumi_Sporting_Club_2022_Durga_Puja_07.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/b/b6/Shree_bhumi_Durga_puja_2022_08.jpg',
     ],
     audioDurationSeconds: 145,
     highlights: [
@@ -258,8 +266,14 @@ export const SAMPLE_PANDALS: Pandal[] = [
     heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTOc4zJ_AlNDEJ0XT2CypW1fB9GuoiU_kKND-cactg49n_HAelwY2f2EhA&s=10',
     photos: [
       'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTOc4zJ_AlNDEJ0XT2CypW1fB9GuoiU_kKND-cactg49n_HAelwY2f2EhA&s=10',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Bagbazar_Srbojanin_Durga_Puja_2025_03.jpg/1280px-Bagbazar_Srbojanin_Durga_Puja_2025_03.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/c/ca/Bagbazar_Srbojanin_Durga_Puja_2025_07.jpg',
+    ],
+
+    images: [
       'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTOc4zJ_AlNDEJ0XT2CypW1fB9GuoiU_kKND-cactg49n_HAelwY2f2EhA&s=10',
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTOc4zJ_AlNDEJ0XT2CypW1fB9GuoiU_kKND-cactg49n_HAelwY2f2EhA&s=10',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Bagbazar_Srbojanin_Durga_Puja_2025_03.jpg/1280px-Bagbazar_Srbojanin_Durga_Puja_2025_03.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/c/ca/Bagbazar_Srbojanin_Durga_Puja_2025_07.jpg',
     ],
     audioDurationSeconds: 120,
     highlights: [
@@ -349,10 +363,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: '১৭৫৭ সালের রাজা নবকৃষ্ণ দেবের ঐতিহাসিক নাটমন্দির ও সাবেকি পুজো',
     description: 'The archetype of Bengal\'s aristocratic Bonedi Bari celebrations. Held in the grand open courtyard of the 18th-century palace, the idol features the distinct "Abhaya Mudra" posture and Mithila miniature art frame.',
     fullHistory: 'Raja Nabakrishna Deb commenced this historic celebration in 1757 after the Battle of Plassey. To this day, the sacred Kathamo (wooden frame) is worshipped on Rath Yatra, and the immersion is carried out on paired boats (Neelkantha Pakhi ritual) in the river.',
-    heroImage: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://i.pinimg.com/1200x/a2/a1/70/a2a17035f8d270d60f5005ca38c89b25.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
+      'https://i.pinimg.com/1200x/a2/a1/70/a2a17035f8d270d60f5005ca38c89b25.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/0/09/Shobhabazar_Rajbari_Durga_Puja.jpg',
+      'https://i.pinimg.com/1200x/f1/55/ed/f155edb1ca965dc575f2f796379bcd4b.jpg',
+    ],
+
+    images: [
+      'https://i.pinimg.com/1200x/a2/a1/70/a2a17035f8d270d60f5005ca38c89b25.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/0/09/Shobhabazar_Rajbari_Durga_Puja.jpg',
+      'https://i.pinimg.com/1200x/f1/55/ed/f155edb1ca965dc575f2f796379bcd4b.jpg',
     ],
     audioDurationSeconds: 155,
     highlights: [
@@ -441,10 +462,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'চিরাচরিত বনেদি রূপ ও জমজমাট দক্ষিণ কলকাতার আড্ডা',
     description: 'More than a pandal, Maddox Square is Kolkata\'s premier festival open-air living room. Generations of Bengalis meet here on the sprawling green lawns in ethnic kurtas and sarees, savoring fish fry, mutton rolls, and engaging in endless joyful conversations.',
     fullHistory: 'Founded in 1935 by prominent South Kolkata residents, Maddox Square maintains the quintessential Bengali community warmth. The idol sits majestically inside an ornate open white temple, allowing devotees to sit on the grass and gaze uninterrupted.',
-    heroImage: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG/1280px-Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG',
     photos: [
-      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG/1280px-Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/b/b2/Pandal_Maddox_Square_2010_Arnab_Dutta.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/d/df/Durga_Puja_Pandal_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9716.JPG',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG/1280px-Durga_with_Her_Family_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9693.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/b/b2/Pandal_Maddox_Square_2010_Arnab_Dutta.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/d/df/Durga_Puja_Pandal_-_Ballygunge_Durga_Puja_Samiti_-_Maddox_Square_-_Kolkata_2016_10-08_9716.JPG',
     ],
     audioDurationSeconds: 110,
     highlights: [
@@ -534,10 +562,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'চন্দননগরের মায়াবী আলোকসজ্জা ও সুপ্রাচীন ভারতীয় মন্দির স্থাপত্য',
     description: 'Famous worldwide for the breathtaking Chandannagar lighting displays that line Gariahat roads with moving historical motifs, complemented by a magnificent golden idol inside a classical temple replica.',
     fullHistory: 'Pioneered by legendary leader Subrata Mukherjee in 1951, Ekdalia Evergreen has never compromised on traditional Sanatan idol sculpting while advancing the pinnacle of electrical light art.',
-    heroImage: 'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://i.pinimg.com/736x/6b/8d/98/6b8d983781790c6237ec26d49d0d8681.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+      'https://i.pinimg.com/736x/6b/8d/98/6b8d983781790c6237ec26d49d0d8681.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2013-10-11_3317.JPG/1280px-Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2013-10-11_3317.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/d/d6/Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2017-09-26_4109.JPG',
+    ],
+
+    images: [
+      'https://i.pinimg.com/736x/6b/8d/98/6b8d983781790c6237ec26d49d0d8681.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2013-10-11_3317.JPG/1280px-Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2013-10-11_3317.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/d/d6/Durga_Puja_Pandal_-_Ekdalia_Evergreen_-_Ekdalia_Road_-_Kolkata_2017-09-26_4109.JPG',
     ],
     audioDurationSeconds: 115,
     highlights: [
@@ -627,10 +662,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'মাটি ও মানুষের সুর • মাটির কলসি ও পিতলের ঘণ্টার অপরূপ মেলবন্ধন',
     description: 'Renowned for mind-expanding conceptual installations that win premier Sharad Samman awards. Chetla Agrani blends profound spiritual philosophy with contemporary sustainable Indian art.',
     fullHistory: 'A cornerstone of South Kolkata artistry guided by Firhad Hakim, Chetla Agrani transformed into a high-concept art sanctuary in the early 2000s, pioneering eco-friendly organic installations.',
-    heroImage: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://i.pinimg.com/736x/c0/f4/d3/c0f4d342ee06c8d3ead869f329625a9d.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
+      'https://i.pinimg.com/736x/c0/f4/d3/c0f4d342ee06c8d3ead869f329625a9d.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg/1280px-Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/6/6b/Decoration_At_Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg',
+    ],
+
+    images: [
+      'https://i.pinimg.com/736x/c0/f4/d3/c0f4d342ee06c8d3ead869f329625a9d.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg/1280px-Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/6/6b/Decoration_At_Chetla_Agrani_Club%2C_Durga_Puja_2025.jpg',
     ],
     audioDurationSeconds: 140,
     highlights: [
@@ -719,10 +761,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'দিঘির জলে প্রতিফলিত মায়াবী আলোকপ্রাসাদ ও সাবেকি প্রতিমা',
     description: 'Iconic Central Kolkata landmark famous for constructing an entire luminous palace erected over the historic College Square swimming pool. The shimmering reflection in the calm water creates an unforgettable visual spectacle.',
     fullHistory: 'Started in 1948, College Square is located right opposite Calcutta University and the historic Presidency College book market. It is one of the top five most-photographed pandals in India.',
-    heroImage: 'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg/1280px-DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg/1280px-DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/2/27/College_square_Durga_puja.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/d/dc/College_Square_Durga_Puja_Committee_2025_01.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg/1280px-DurgaPuja2022_-_Durga_Puja_Pandal_of_College_square_05.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/2/27/College_square_Durga_puja.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/d/dc/College_Square_Durga_Puja_Committee_2025_01.jpg',
     ],
     audioDurationSeconds: 125,
     highlights: [
@@ -812,10 +861,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: '১১০ ফুটের সুবিশাল গম্বুজ ও থ্রি-ডি লেজার লাইট শো',
     description: 'One of the most visited pandals in Central Kolkata, known for jaw-dropping architectural marvels and cutting-edge lighting choreography that draws visitors from across India.',
     fullHistory: 'Instituted in 1936 in the heart of Bowbazar, Santosh Mitra Square has consistently pushed the technological frontiers of festival exhibition.',
-    heroImage: 'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg/1280px-Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg/1280px-Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/f/f2/Santosh_Mitra_square_Durga_Puja_2025_01.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/2/22/Santosh_Mitra_square_Durga_Puja_2025_04.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg/1280px-Durga_Puja_Pandal_in_Kolkata%2C_2023_03.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/f/f2/Santosh_Mitra_square_Durga_Puja_2025_01.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/2/22/Santosh_Mitra_square_Durga_Puja_2025_04.jpg',
     ],
     audioDurationSeconds: 130,
     highlights: [
@@ -902,10 +958,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'আলপনা • পিটুলির শুভ্রতা ও গ্রামীণ লোকশিল্পের অনন্য সমাহার',
     description: 'A benchmark of South Kolkata\'s refined cultural aesthetics. Ballygunge Cultural fuses heritage dignity with sophisticated conceptual themes that appeal equally to art connoisseurs and traditional worshippers.',
     fullHistory: 'Founded in 1951, Ballygunge Cultural Association has been a key pillar of South Kolkata\'s cultural triangle alongside Maddox Square and Tridhara.',
-    heroImage: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Ballygunge_Cultural_Durga_Puja_2024_07.jpg/1280px-Ballygunge_Cultural_Durga_Puja_2024_07.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Ballygunge_Cultural_Durga_Puja_2024_07.jpg/1280px-Ballygunge_Cultural_Durga_Puja_2024_07.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Ballygunge_Cultural_Durga_Puja_2024_14.jpg/1280px-Ballygunge_Cultural_Durga_Puja_2024_14.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/4/43/Ballygunge_Cultural_Durga_Puja_2024_01.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Ballygunge_Cultural_Durga_Puja_2024_07.jpg/1280px-Ballygunge_Cultural_Durga_Puja_2024_07.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Ballygunge_Cultural_Durga_Puja_2024_14.jpg/1280px-Ballygunge_Cultural_Durga_Puja_2024_14.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/4/43/Ballygunge_Cultural_Durga_Puja_2024_01.jpg',
     ],
     audioDurationSeconds: 120,
     highlights: [
@@ -945,6 +1008,104 @@ export const SAMPLE_PANDALS: Pandal[] = [
       sandhiPuja: '05:42 PM - 06:30 PM',
       dhunuchiAarti: '07:45 PM',
       bhogDistribution: '01:00 PM - 02:45 PM',
+    }
+  },
+  {
+    id: 'deshapriya-park',
+    name: 'Deshapriya Park Durgotsav',
+    bengaliName: 'দেশপ্রিয় পার্ক দুর্গোৎসব',
+    tagline: 'Colossal Installations & Celebrated Grandeur in South Kolkata',
+    city: 'kolkata',
+    area: 'Rashbehari / Deshapriya Park',
+    bengaliArea: 'রাসবিহারী / দেশপ্রিয় পার্ক',
+    zone: 'south_kolkata',
+    zoneLabel: 'Rashbehari / Deshapriya Park',
+    bengaliZoneLabel: 'রাসবিহারী / দেশপ্রিয় পার্ক',
+    address: 'Deshapriya Park West, Kalighat / Ballygunge, Kolkata 700029',
+    latitude: 22.5185,
+    longitude: 88.3530,
+    coordinates: {
+      lat: 22.5185,
+      lng: 88.3530,
+      mapX: 52,
+      mapY: 66,
+    },
+    category: 'theme_marvel',
+    categoryLabel: 'Mega Theme Installation & Monumental Architecture',
+    yearEstablished: 1938,
+    
+    // Quality Scoring Foundation
+    idolQualityScore: 9.7,
+    themeQualityScore: 9.8,
+    popularityScore: 9.8,
+    overallQualityScore: 9.8,
+    recommendationLevel: 'Must Visit',
+    estimatedVisitDuration: 35,
+    typicalCrowdLevel: 'high',
+    tags: ['Must Visit', 'Theme', 'Mega Installation', 'Famous', 'Family Friendly'],
+    isDemoRecord: true,
+
+    crowdLevel: 'high',
+    queueWaitMinutes: 35,
+    peakHours: '05:30 PM - 02:00 AM',
+    bestTimeToVisit: '01:30 PM - 04:30 PM (Daytime architectural illumination)',
+    idolArtisan: 'Mintoo Pal (Eminent Sculptor)',
+    pandalArchitect: 'Pradip Ghosh & Bengal Art Workshop',
+    themeConcept: 'Shwet Subhro — Pure White Marble Sanctum of Peace',
+    themeDescription: 'A monumental white architectural sanctum rising 80 feet, with intricate relief sculptures and serene lighting celebrating timeless spiritual peace.',
+    bengaliTheme: 'শ্বেত শুভ্র • শান্তি ও আধ্যাত্মিকতার শ্বেতপাথর ভাস্কর্য',
+    description: 'One of South Kolkata\'s most legendary mega pujas, Deshapriya Park is world-renowned for landmark monumental installations that draw millions of devotees each autumn.',
+    fullHistory: 'Founded in 1938 in the expansive grounds of Deshapriya Park, it has consistently set records for scale, artistic audacity, and festive devotion in Kolkata.',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG/1280px-Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG',
+    photos: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG/1280px-Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Durga_Puja_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4519.JPG/1280px-Durga_Puja_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4519.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/f/fe/Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4501.JPG',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG/1280px-Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4498.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Durga_Puja_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4519.JPG/1280px-Durga_Puja_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4519.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/f/fe/Durga_Puja_Pandal_-_Ballygunge_Sarbojanin_Durgotsab_-_Deshapriya_Park_-_Kolkata_2017-09-27_4501.JPG',
+    ],
+    audioDurationSeconds: 140,
+    highlights: [
+      'Vast open park pavilion allowing smooth crowd circulation',
+      'Exquisite serene Durga idol adorned with traditional ornaments',
+      'Special illuminated walkways leading to Priya Cinema junction'
+    ],
+    transit: {
+      nearestMetro: {
+        station: 'Kalighat Metro',
+        line: 'Blue Line (North-South)',
+        gate: 'Gate 2 (Deshapriya Park Connector)',
+        walkingMins: 8,
+      },
+      nearestBusStop: {
+        stop: 'Deshapriya Park Crossing / Rashbehari',
+        routes: ['47', '47A', '1', '212', 'AC-4B'],
+        walkingMins: 2,
+      },
+      nearestAutoStand: {
+        route: 'Gariahat Crossing to Deshapriya Park',
+        walkingMins: 2,
+      },
+      parkingAvailability: 'limited',
+      vipPassEntryGate: 'Mahanirban Math Road VIP Gate',
+      wheelchairAccessible: true,
+    },
+    foodNearby: [
+      { name: 'Priya Snacks & Roll Corner', cuisine: 'Kolkata Street Food', famousDish: 'Mutton Egg Roll & Fish Fry', distance: '120m', icon: '🌯' },
+      { name: 'K.C. Das (Rashbehari)', cuisine: 'Heritage Sweets', famousDish: 'Rasgulla & Mihidana', distance: '250m', icon: '🍯' },
+    ],
+    rating: 4.90,
+    reviewCount: 5200,
+    isVIPPassAvailable: true,
+    isOpen24Hours: true,
+    tithiAartiTimes: {
+      sandhiPuja: '05:42 PM - 06:30 PM',
+      dhunuchiAarti: '07:30 PM',
+      bhogDistribution: '01:00 PM - 03:00 PM',
     }
   },
   {
@@ -993,10 +1154,17 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'সবুজ অরণ্য ও জীববৈচিত্র্যের সুরক্ষায় নির্মিত পরিবেশবান্ধব মণ্ডপ',
     description: 'The flagship Durga Puja of Salt Lake City (Bidhannagar). Renowned for its colossal architectural themes, massive open parkland, hassle-free parking, and family-friendly fairgrounds.',
     fullHistory: 'Started in 1985 by the residents of FD Block, it quickly grew into the benchmark for modern planned-city community celebrations in Bengal.',
-    heroImage: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG/1280px-Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG',
     photos: [
-      'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG/1280px-Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/6/66/FD_Durga_2019.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/5/56/Durga_with_Her_Family_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3272.JPG',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG/1280px-Durga_Puja_Pandal_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3266.JPG',
+      'https://upload.wikimedia.org/wikipedia/commons/6/66/FD_Durga_2019.jpg',
+      'https://upload.wikimedia.org/wikipedia/commons/5/56/Durga_with_Her_Family_-_FD_Block_-_Salt_Lake_City_-_Kolkata_2013-10-11_3272.JPG',
     ],
     audioDurationSeconds: 110,
     highlights: [
@@ -1041,6 +1209,202 @@ export const SAMPLE_PANDALS: Pandal[] = [
   // =========================================================================
   // CONTAI (KANTHI) PANDALS (Town Center, Heritage, Coastal & Rural Arts)
   // =========================================================================
+  {
+    id: 'contai-nandanik',
+    name: 'Contai Nandanik',
+    bengaliName: 'কাঁথি নান্দনিক',
+    tagline: 'Purba Medinipur\'s Grand Cultural Marvel • Conceptual Heritage & Illumination',
+    city: 'contai',
+    area: 'Nandanik Math / Super Market',
+    bengaliArea: 'নান্দনিক মাঠ / সুপার মার্কেট',
+    zone: 'contai_central',
+    zoneLabel: 'Contai Central Hub',
+    bengaliZoneLabel: 'কাঁথি সেন্ট্রাল হাব',
+    address: 'Nandanik Club Ground, College Road, Contai 721401, Purba Medinipur',
+    latitude: 21.7812,
+    longitude: 87.7508,
+    coordinates: {
+      lat: 21.7812,
+      lng: 87.7508,
+      mapX: 46,
+      mapY: 39,
+    },
+    category: 'theme_marvel',
+    categoryLabel: 'Celebrity Cultural Showcase & Heritage Art Installation',
+    yearEstablished: 1980,
+    
+    // Quality Scoring Foundation
+    idolQualityScore: 9.9,
+    themeQualityScore: 9.9,
+    popularityScore: 9.9,
+    overallQualityScore: 9.9,
+    recommendationLevel: 'Must Visit',
+    estimatedVisitDuration: 40,
+    typicalCrowdLevel: 'high',
+    tags: ['Must Visit', 'Theme', 'Artistic Idol', 'Award Winner', 'Famous', 'Crowd Puller', 'Family Friendly'],
+    isDemoRecord: true,
+
+    crowdLevel: 'high',
+    queueWaitMinutes: 35,
+    peakHours: '06:00 PM - 01:30 AM',
+    bestTimeToVisit: '02:30 PM - 05:30 PM (Daylight architectural viewing & calm queue)',
+    idolArtisan: 'Pradip Rudra Pal (Kumartuli Maestro) & Contai Clay Masters',
+    pandalArchitect: 'Soumen Ghosh & Nandanik Creative Guild',
+    themeConcept: 'Sonar Kella & Royal Bengal Heritage Sanctuary',
+    themeDescription: 'A colossal architectural installation recreating timeless Bengali literary and cultural heritage with eco-friendly sand-cast reliefs, golden dome filigree, and royal courtyard lighting.',
+    bengaliTheme: 'সোনার কেল্লা ও রাজকীয় বঙ্গ সংস্কৃতির চিরন্তন ঐতিহ্য রূপায়ণ',
+    description: 'Consistently ranking among the highest crowd-pullers and top award winners of Contai (Kanthi), Contai Nandanik transforms its central grounds into an awe-inspiring cultural spectacle. Celebrated for royal architectural installations, celebrity inaugurations, and an exquisitely sculpted traditional idol, it is an indispensable stop for every coastal puja traveler.',
+    fullHistory: 'Established in 1980 by visionary cultural enthusiasts of Kanthi, Contai Nandanik has grown over four decades into a flagship Durga Puja festival destination in East Midnapore, drawing visitors from across Digha, Mandarmani, Kharagpur, and West Bengal.',
+    heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSmyO4wNFx88gmylN_d6RphMY0NY5ZWoI3TiJR_hfpKAg&s=10',
+    photos: [
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSmyO4wNFx88gmylN_d6RphMY0NY5ZWoI3TiJR_hfpKAg&s=10',
+      'https://i.ytimg.com/vi/j1dOettNvi8/hqdefault.jpg',
+    ],
+
+    images: [
+      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSmyO4wNFx88gmylN_d6RphMY0NY5ZWoI3TiJR_hfpKAg&s=10',
+      'https://i.ytimg.com/vi/j1dOettNvi8/hqdefault.jpg',
+    ],
+    audioDurationSeconds: 140,
+    highlights: [
+      'Grand architectural facade inspired by historic Bengal royal palaces',
+      'Traditional Ekchala Durga protima crafted with immaculate detailing',
+      'Celebrity cultural inauguration and evening musical soiree',
+      'Spacious queuing plaza with shaded cooling corridors and drinking water points'
+    ],
+    transit: {
+      nearestMetro: {
+        station: 'Contai Railway Station (Kanthi Station)',
+        line: 'South Eastern Railway (Howrah-Digha Line)',
+        gate: 'Platform 1 Main Station Exit',
+        walkingMins: 10,
+      },
+      nearestBusStop: {
+        stop: 'Contai Super Market / College Road Crossing',
+        routes: ['Kanthi-Digha Highway', 'Contai Town Circular Toto Feeder'],
+        walkingMins: 3,
+      },
+      nearestAutoStand: {
+        route: 'Contai Central Bus Stand to Nandanik Math',
+        walkingMins: 2,
+      },
+      parkingAvailability: 'dedicated_bay',
+      vipPassEntryGate: 'Gate 1 North VIP Arch',
+      wheelchairAccessible: true,
+    },
+    foodNearby: [
+      { name: 'Nandanik Food Carnival', cuisine: 'Bengali Festive Street Food', famousDish: 'Mughlai Paratha, Radha Ballabhi & Dum Aloo', distance: '50m', icon: '🥟' },
+      { name: 'Kanthi Mistanna Bhandar', cuisine: 'Traditional Sweets', famousDish: 'Kanthir Kacha Golla, Malpoa & Hot Gulab Jamun', distance: '120m', icon: '🥮' },
+      { name: 'Coastal Spice Kitchen', cuisine: 'Midnapore Coastal Seafood', famousDish: 'Chingri Malai Curry & Prawn Cutlet', distance: '220m', icon: '🦐' },
+    ],
+    rating: 4.92,
+    reviewCount: 3240,
+    isVIPPassAvailable: true,
+    isOpen24Hours: true,
+    tithiAartiTimes: {
+      sandhiPuja: '05:35 PM - 06:25 PM',
+      dhunuchiAarti: '07:45 PM (Grand Dhaki Ensemble & Mahila Dhunuchi)',
+      bhogDistribution: '12:30 PM - 02:30 PM (Khichuri Bhog with Payesh)',
+    }
+  },
+  {
+    id: 'contai-youth',
+    name: 'Contai Youth',
+    bengaliName: 'কাঁথি ইউথ',
+    tagline: 'Dazzling Sheesh Mahal & Millions of Reflective Mirrors • Kanthi\'s Mega Attraction',
+    city: 'contai',
+    area: 'Contai Bypass / Municipal Market',
+    bengaliArea: 'কাঁথি বাইপাস / পৌর মার্কেট',
+    zone: 'contai_central',
+    zoneLabel: 'Contai Central Town',
+    bengaliZoneLabel: 'কাঁথি সেন্ট্রাল টাউন',
+    address: 'Youth Guild Ground, Bypass Road, Contai 721401, Purba Medinipur',
+    latitude: 21.7838,
+    longitude: 87.7475,
+    coordinates: {
+      lat: 21.7838,
+      lng: 87.7475,
+      mapX: 41,
+      mapY: 33,
+    },
+    category: 'theme_marvel',
+    categoryLabel: 'Sheesh Mahal Installation & Chandannagar Dynamic Illumination',
+    yearEstablished: 1995,
+    
+    // Quality Scoring Foundation
+    idolQualityScore: 9.8,
+    themeQualityScore: 9.9,
+    popularityScore: 9.8,
+    overallQualityScore: 9.8,
+    recommendationLevel: 'Must Visit',
+    estimatedVisitDuration: 35,
+    typicalCrowdLevel: 'high',
+    tags: ['Must Visit', 'Theme', 'Chandannagar Lights', 'Famous', 'Crowd Puller', 'Family Friendly'],
+    isDemoRecord: true,
+
+    crowdLevel: 'high',
+    queueWaitMinutes: 35,
+    peakHours: '06:30 PM - 02:00 AM',
+    bestTimeToVisit: '03:00 PM - 06:00 PM (Sunset mirror illumination & smooth entry)',
+    idolArtisan: 'Babu Pal (Midnapore Artist Guild) & Chandannagar Light Maestros',
+    pandalArchitect: 'Tapas Sen Illumination Guild & Contai Youth Designers',
+    themeConcept: 'Rajasthan Sheesh Mahal & Five-Color Stained Glass Sanctum',
+    themeDescription: 'A breathtaking palatial marvel adorned with millions of micro-convex mirrors and vibrant stained glass imported from Rajasthan, producing an ethereal starry celestial reflection around Devi Durga.',
+    bengaliTheme: 'রাজস্থানের রাজকীয় শীশ মহল ও লক্ষাধিক কাঁচের জ্যোতির্ময় দুর্গামণ্ডপ',
+    description: 'Contai Youth (Youth Guild Club) is universally renowned across coastal Bengal for staging dazzling theme architecture and mesmerizing light displays. Their spellbinding Sheesh Mahal creation, featuring millions of precision mirror tiles reflecting kaleidoscopic LED lights, draws massive crowds from the entire Purba Medinipur district.',
+    fullHistory: 'Founded by energetic youth volunteers in 1995, Contai Youth has grown into one of the most talked-about modern spectacles in Kanthi, famous for setting new design benchmarks with themed glasswork, sound and light synchronization, and generous community service.',
+    heroImage: 'https://i.ytimg.com/vi/p3Q509RmpG4/maxresdefault.jpg',
+    photos: [
+      'https://i.ytimg.com/vi/p3Q509RmpG4/maxresdefault.jpg',
+      'https://i.ytimg.com/vi/fOW2WEqDGzo/hqdefault.jpg',
+    ],
+
+    images: [
+      'https://i.ytimg.com/vi/p3Q509RmpG4/maxresdefault.jpg',
+      'https://i.ytimg.com/vi/fOW2WEqDGzo/hqdefault.jpg',
+    ],
+    audioDurationSeconds: 135,
+    highlights: [
+      'Over 1.5 million precision glass and mirror facets illuminating the sanctum',
+      'Grand 65-foot royal palace dome visible from the Contai bypass highway',
+      'Dynamic light sequencing engineered by senior Chandannagar artisans',
+      'Dedicated emergency aid booth, medical tent, and lost-and-found desk'
+    ],
+    transit: {
+      nearestMetro: {
+        station: 'Contai Railway Station (Kanthi Station)',
+        line: 'South Eastern Railway (Howrah-Digha Line)',
+        gate: 'Platform 2 Station Connector',
+        walkingMins: 14,
+      },
+      nearestBusStop: {
+        stop: 'Contai Bypass / Youth Guild Corner Bus Stop',
+        routes: ['Kanthi Town Bypass Route', 'Contai-Egra Highway Feeder'],
+        walkingMins: 2,
+      },
+      nearestAutoStand: {
+        route: 'Central Bus Stand to Bypass Youth Ground',
+        walkingMins: 2,
+      },
+      parkingAvailability: 'dedicated_bay',
+      vipPassEntryGate: 'West Bypass VIP Gate',
+      wheelchairAccessible: true,
+    },
+    foodNearby: [
+      { name: 'Bypass Food Pavilion', cuisine: 'Fast Food & Snacks', famousDish: 'Egg Chicken Roll, Fish Fry & Cold Lassi', distance: '60m', icon: '🌯' },
+      { name: 'Kanthi Kaju Corner', cuisine: 'Medinipur Specialty', famousDish: 'Sweet Cashew Barfi & Roasted Masala Kaju', distance: '140m', icon: '🥜' },
+      { name: 'Ananda Dhaba', cuisine: 'North Indian & Bengali', famousDish: 'Tandoori Roti with Kadhai Paneer & Pulao', distance: '200m', icon: '🍛' },
+    ],
+    rating: 4.89,
+    reviewCount: 2980,
+    isVIPPassAvailable: true,
+    isOpen24Hours: true,
+    tithiAartiTimes: {
+      sandhiPuja: '05:40 PM - 06:30 PM',
+      dhunuchiAarti: '07:30 PM (Acoustic Dhak & Bell Symphony)',
+      bhogDistribution: '01:00 PM - 02:45 PM',
+    }
+  },
   {
     id: 'contai-sabuj-sangha',
     name: 'Contai Sabuj Sangha (Kanthi)',
@@ -1087,10 +1451,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'বিষ্ণুপুরের পোড়ামাটির টেরাকোটা ভাস্কর্য ও মেদিনীপুরের পটচিত্র',
     description: 'The crown jewel of Durga Puja in East Midnapore. Contai Sabuj Sangha creates breathtaking conceptual pandals utilizing sustainable organic materials—terracotta tiles, palm leaves, jute, bell-metal, and authentic Medinipur Patachitra scrolls.',
     fullHistory: 'Originating in 1954 in the historic town of Kanthi (Contai), this puja bridges coastal folk traditions with contemporary architectural installation art. Visitors travel from Digha, Mandarmani, Kharagpur, and Kolkata to admire the craftsmanship.',
-    heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Durga_Puja_terracotta_work.jpg/1280px-Durga_Puja_terracotta_work.jpg',
     photos: [
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Durga_Puja_terracotta_work.jpg/1280px-Durga_Puja_terracotta_work.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Durga_Puja_terracotta_work.jpg/1280px-Durga_Puja_terracotta_work.jpg',
     ],
     audioDurationSeconds: 135,
     highlights: [
@@ -1180,10 +1547,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: '১০৮ দলের স্বর্ণপদ্ম ও ফোয়ারার আলোয় সেজে ওঠা অপরূপ মণ্ডপ',
     description: 'The vibrant heart of Kanthi town festivities. Welcomes everyone stepping off inter-district buses and trains with a massive luminous lotus canopy, beating dhaks, and vibrant food streets.',
     fullHistory: 'Founded in 1968 by local transport workers and business guild of Contai, it has grown into one of the largest budget pandals in South Bengal, renowned for its dazzling illuminations and grand fairgrounds.',
-    heroImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_puja_pandal_in_West_Bengal.jpg/1280px-Durga_puja_pandal_in_West_Bengal.jpg',
     photos: [
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
-      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQazTh7skDFyJ23TM1nNkBcZ1n9WgrVgNIOrQI-4jEIuwVXNEmFkzv6MyU&s=10',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_puja_pandal_in_West_Bengal.jpg/1280px-Durga_puja_pandal_in_West_Bengal.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Durga_puja_pandal_in_West_Bengal.jpg/1280px-Durga_puja_pandal_in_West_Bengal.jpg',
     ],
     audioDurationSeconds: 105,
     highlights: [
@@ -1271,10 +1641,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'সমুদ্রের শঙ্খ ও ঝিনুক দিয়ে তৈরি সাগরতীরের অনবদ্য মণ্ডপ',
     description: 'A spectacular coastal celebration in Contai. The entire sanctum is crafted using natural sea-shells (Jhinuk), sacred conch-shells (Shankha), and coastal driftwood collected across the beaches of Junput, Mandarmani, and Shankarpur.',
     fullHistory: 'Established by local youth in 1978, this pandal pays homage to the coastal heritage of Purba Medinipur and the maritime history of ancient Tamralipta.',
-    heroImage: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Artistic_representation_inside_a_pandal.jpg/1280px-Artistic_representation_inside_a_pandal.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Artistic_representation_inside_a_pandal.jpg/1280px-Artistic_representation_inside_a_pandal.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Artistic_representation_inside_a_pandal.jpg/1280px-Artistic_representation_inside_a_pandal.jpg',
     ],
     audioDurationSeconds: 95,
     highlights: [
@@ -1363,10 +1736,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'কাঁথির প্রাচীন বনেদি ঐতিহ্য ও পিতলের কাঁসর-ঘণ্টার সাবেকি পুজো',
     description: 'The cultural pride of Kanthi town alumni and residents. Celebrated for its tranquil traditional worship, pure Ekchala idol, and historical fairgrounds.',
     fullHistory: 'Started in 1946 during the pre-independence era by patriotic teachers and scholars of Kanthi High School.',
-    heroImage: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
     ],
     audioDurationSeconds: 100,
     highlights: [
@@ -1446,9 +1822,13 @@ export const SAMPLE_PANDALS: Pandal[] = [
     bengaliTheme: 'গ্রাম বাংলার শান্ত শ্যামল পরিবেশ ও শোলার সাজের প্রতিমা',
     description: 'A delightful community puja in North Contai offering peaceful darshan with minimal crowd congestion and authentic hometown warmth.',
     fullHistory: 'Established in 1982 by the youth of Belda Road neighborhood.',
-    heroImage: 'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1200&q=80',
+    heroImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
     photos: [
-      'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
+    ],
+
+    images: [
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Durga_Puja_in_rural_bengal.jpg/1280px-Durga_Puja_in_rural_bengal.jpg',
     ],
     audioDurationSeconds: 85,
     highlights: [

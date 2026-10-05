@@ -558,6 +558,8 @@ const getStoredGroups = (): SharedTripGroup[] => {
         preferredTransport: 'mixed',
         maxWalkingDistanceMeters: 4000,
         selectedPandalIds: [
+          'contai-nandanik',
+          'contai-youth',
           'contai-central-bus-stand',
           'contai-sabuj-sangha',
           'contai-highschool-math',
@@ -932,6 +934,307 @@ export const joinTripByInviteCode = async (
     },
     error: null,
   };
+};
+
+// ============================================================================
+// SQUAD MANAGEMENT OPERATIONS (Admin / Member Controls)
+// ============================================================================
+
+// Remove a member from the squad (Owner/Admin only)
+export const removeMemberFromGroup = async (
+  tripId: string,
+  memberUserId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  // Permission check: Operator must be admin or createdBy
+  const operator = target.members.find((m) => m.userId === operatorUserId);
+  const isOperatorAdmin = operator?.role === 'admin' || target.createdBy === operatorUserId;
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner/admin can remove members.' };
+  }
+
+  if (memberUserId === operatorUserId) {
+    return { success: false, error: 'You cannot remove yourself as admin. Use Leave Squad instead.' };
+  }
+
+  const memberToRemove = target.members.find((m) => m.userId === memberUserId);
+  if (!memberToRemove) {
+    return { success: false, error: 'Member not found in this squad.' };
+  }
+
+  const memberName = memberToRemove.profile?.displayName || 'Member';
+
+  // Remove from members list
+  target.members = target.members.filter((m) => m.userId !== memberUserId);
+
+  // Add activity log
+  const now = new Date().toISOString();
+  const removeActivity: GroupActivityEvent = {
+    id: `act_${Date.now()}`,
+    tripId: target.trip.id,
+    type: 'member_left',
+    userId: memberUserId,
+    userName: memberName,
+    description: `${memberName} was removed from the squad`,
+    bengaliDescription: `${memberName}-কে স্কোয়াড থেকে সরানো হয়েছে`,
+    timestamp: now,
+  };
+  target.recentActivities.unshift(removeActivity);
+
+  saveStoredGroups(groups);
+
+  // Sync to Supabase
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase
+        .from('trip_members')
+        .delete()
+        .match({ trip_id: tripId, user_id: memberUserId });
+    } catch (err) {
+      console.warn('Error removing member from Supabase:', err);
+    }
+  }
+
+  // Realtime notification
+  groupBroadcastChannel?.postMessage({
+    type: 'MEMBER_REMOVED',
+    tripId,
+    userId: memberUserId,
+  });
+
+  return { success: true, group: target };
+};
+
+// Leave the squad (Current user)
+export const leaveGroup = async (
+  tripId: string,
+  userId: string
+): Promise<{ success: boolean; nextActiveGroupId?: string; error?: string }> => {
+  let groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const member = target.members.find((m) => m.userId === userId);
+  const memberName = member?.profile?.displayName || 'A member';
+
+  // Remove user
+  target.members = target.members.filter((m) => m.userId !== userId);
+
+  // If no members left in group, remove the group entirely
+  if (target.members.length === 0) {
+    groups = groups.filter((g) => g.trip.id !== tripId);
+    saveStoredGroups(groups);
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('trips').delete().eq('id', tripId);
+      } catch (err) {
+        console.warn('Error deleting empty trip from Supabase:', err);
+      }
+    }
+  } else {
+    // If leaving member was admin, promote next member to admin
+    const hasAdmin = target.members.some((m) => m.role === 'admin');
+    if (!hasAdmin && target.members.length > 0) {
+      target.members[0].role = 'admin';
+      target.createdBy = target.members[0].userId;
+    }
+
+    const leaveActivity: GroupActivityEvent = {
+      id: `act_${Date.now()}`,
+      tripId,
+      type: 'member_left',
+      userId,
+      userName: memberName,
+      description: `${memberName} left the squad`,
+      bengaliDescription: `${memberName} স্কোয়াড ছেড়েছেন`,
+      timestamp: new Date().toISOString(),
+    };
+    target.recentActivities.unshift(leaveActivity);
+    saveStoredGroups(groups);
+  }
+
+  // Supabase sync
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase
+        .from('trip_members')
+        .delete()
+        .match({ trip_id: tripId, user_id: userId });
+    } catch (err) {
+      console.warn('Error leaving group in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'MEMBER_LEFT',
+    tripId,
+    userId,
+  });
+
+  const remaining = getMyTripGroups(userId);
+  return { success: true, nextActiveGroupId: remaining[0]?.trip.id };
+};
+
+// Update Squad details (Name, Bengali name, preferred transport)
+export const updateGroupDetails = async (
+  tripId: string,
+  updates: { name?: string; bengaliName?: string; preferredTransport?: any },
+  operatorUserId: string
+): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const operator = target.members.find((m) => m.userId === operatorUserId);
+  const isOperatorAdmin = operator?.role === 'admin' || target.createdBy === operatorUserId;
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner/admin can edit squad details.' };
+  }
+
+  if (updates.name) target.trip.name = updates.name.trim();
+  if (updates.bengaliName !== undefined) target.trip.bengaliName = updates.bengaliName.trim() || undefined;
+  if (updates.preferredTransport) target.trip.preferredTransport = updates.preferredTransport;
+  target.trip.updatedAt = new Date().toISOString();
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase
+        .from('trips')
+        .update({
+          name: target.trip.name,
+          bengali_name: target.trip.bengaliName,
+          preferred_transport: target.trip.preferredTransport,
+          updated_at: target.trip.updatedAt,
+        })
+        .eq('id', tripId);
+    } catch (err) {
+      console.warn('Error updating trip in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'GROUP_UPDATED',
+    tripId,
+  });
+
+  return { success: true, group: target };
+};
+
+// Transfer admin ownership to another squad member
+export const transferGroupAdmin = async (
+  tripId: string,
+  targetUserId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin') ||
+    target.createdBy === operatorUserId;
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner/admin can transfer admin rights.' };
+  }
+
+  const targetMember = target.members.find((m) => m.userId === targetUserId);
+  if (!targetMember) {
+    return { success: false, error: 'Selected member is not part of this squad.' };
+  }
+
+  // Update roles
+  target.members = target.members.map((m) => {
+    if (m.userId === targetUserId) {
+      return { ...m, role: 'admin' as MemberRole };
+    }
+    return m;
+  });
+  target.createdBy = targetUserId;
+
+  const now = new Date().toISOString();
+  const transferActivity: GroupActivityEvent = {
+    id: `act_${Date.now()}`,
+    tripId,
+    type: 'member_joined',
+    userId: targetUserId,
+    userName: targetMember.profile?.displayName || 'Member',
+    description: `${targetMember.profile?.displayName || 'Member'} is now Squad Admin`,
+    bengaliDescription: `${targetMember.profile?.displayName || 'সদস্য'} এখন স্কোয়াড অ্যাডমিন`,
+    timestamp: now,
+  };
+  target.recentActivities.unshift(transferActivity);
+
+  saveStoredGroups(groups);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase
+        .from('trip_members')
+        .update({ role: 'admin' })
+        .match({ trip_id: tripId, user_id: targetUserId });
+      await supabase.from('trips').update({ created_by: targetUserId }).eq('id', tripId);
+    } catch (err) {
+      console.warn('Error transferring admin in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'ROLE_UPDATED',
+    tripId,
+    userId: targetUserId,
+  });
+
+  return { success: true, group: target };
+};
+
+// Delete entire squad (Owner/Admin only)
+export const deleteTripGroup = async (
+  tripId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; nextActiveGroupId?: string; error?: string }> => {
+  let groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin') ||
+    target.createdBy === operatorUserId;
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner/admin can delete this squad.' };
+  }
+
+  groups = groups.filter((g) => g.trip.id !== tripId);
+  saveStoredGroups(groups);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('trips').delete().eq('id', tripId);
+    } catch (err) {
+      console.warn('Error deleting trip in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'GROUP_DELETED',
+    tripId,
+  });
+
+  const remaining = getMyTripGroups(operatorUserId);
+  return { success: true, nextActiveGroupId: remaining[0]?.trip.id };
 };
 
 // Update group itinerary sequence (Reorder, add, or remove pandals)

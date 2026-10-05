@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CityId, Pandal, UserPreferences, CuratedRoute, LocationWeather } from '../../types';
 import { getTodayTithiInfo } from '../../data/festivalCalendar2026';
 import { getMahalayaCountdown } from '../../data/pujaCalendar2026';
+import { getCurrentPujaStatus } from '../../utils/pujaDateStatus';
 import { CURATED_ROUTES } from '../../data/curatedRoutes';
 import { DurgaThirdEye, DhunuchiIcon, DhakIcon, AlpanaCorner } from '../common/BengaliMotifs';
 import { WeatherTicker } from '../common/WeatherTicker';
@@ -9,7 +10,9 @@ import { WeatherAlertSystem } from '../home/WeatherAlertSystem';
 import { WhatShouldWeDoNowCard } from '../common/WhatShouldWeDoNowCard';
 import { PersonalWalkingCard } from '../common/PersonalWalkingCard';
 import { CrowdIntensityIndicator } from '../common/CrowdIntensityIndicator';
+import { PWAInstallCard } from '../common/PWAInstallCard';
 import { getCachedWeatherSync, getLiveCityWeather } from '../../services/weatherService';
+import { handleImageError } from '../../utils/imageFallback';
 import {
   Sparkles,
   Clock,
@@ -80,6 +83,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const todayTithi = useMemo(() => getTodayTithiInfo(), []);
   const mahalayaCountdown = useMemo(() => getMahalayaCountdown(), []);
+  const pujaStatus = useMemo(() => getCurrentPujaStatus(), []);
 
   return (
     <div id="home-dashboard" className="space-y-5 pb-8 animate-fadeIn">
@@ -149,84 +153,84 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       </section>
 
-      {/* 1A. Dynamic Mahalaya Countdown Banner (Points dynamically to Oct 10, 2026 Asia/Kolkata; shows 'TODAY' on Oct 10; hides/transitions after Oct 10) */}
-      {!mahalayaCountdown.isPassed && (
-        <section
-          id="mahalaya-countdown-card"
-          className={`relative overflow-hidden rounded-2xl p-4 sm:p-5 border transition-all duration-300 shadow-xs ${
-            mahalayaCountdown.isToday
-              ? isDarkMode
-                ? 'bg-gradient-to-r from-[#451A03] via-[#78350F] to-[#451A03] border-[#F59E0B]/50 text-white'
-                : 'bg-gradient-to-r from-amber-100 via-amber-50 to-orange-100 border-[#F59E0B] text-stone-950'
-              : isDarkMode
-              ? 'bg-gradient-to-r from-[#2A161E] via-[#20141C] to-[#1A1017] border-[#F59E0B]/30 text-white'
-              : 'bg-amber-50/80 border-amber-300/90 text-stone-950'
-          }`}
-        >
-          <AlpanaCorner
-            position="top-right"
-            size={40}
-            color={isDarkMode ? '#FDE68A' : '#D97706'}
-            className="absolute top-1 right-1 opacity-20 pointer-events-none"
-          />
-          <AlpanaCorner
-            position="bottom-left"
-            size={40}
-            color={isDarkMode ? '#FDE68A' : '#D97706'}
-            className="absolute bottom-1 left-1 opacity-20 pointer-events-none"
-          />
+      {/* 1A. Dynamic Mahalaya Countdown / Festival Status Banner (Synchronized with Festive Frame) */}
+      <section
+        id="mahalaya-countdown-card"
+        className={`relative overflow-hidden rounded-2xl p-4 sm:p-5 border transition-all duration-300 shadow-xs ${
+          pujaStatus.type === 'MAHALAYA' || pujaStatus.isFestivalActive
+            ? isDarkMode
+              ? 'bg-gradient-to-r from-[#451A03] via-[#78350F] to-[#451A03] border-[#F59E0B]/50 text-white'
+              : 'bg-gradient-to-r from-amber-100 via-amber-50 to-orange-100 border-[#F59E0B] text-stone-950'
+            : isDarkMode
+            ? 'bg-gradient-to-r from-[#2A161E] via-[#20141C] to-[#1A1017] border-[#F59E0B]/30 text-white'
+            : 'bg-amber-50/80 border-amber-300/90 text-stone-950'
+        }`}
+      >
+        <AlpanaCorner
+          position="top-right"
+          size={40}
+          color={isDarkMode ? '#FDE68A' : '#D97706'}
+          className="absolute top-1 right-1 opacity-20 pointer-events-none"
+        />
+        <AlpanaCorner
+          position="bottom-left"
+          size={40}
+          color={isDarkMode ? '#FDE68A' : '#D97706'}
+          className="absolute bottom-1 left-1 opacity-20 pointer-events-none"
+        />
 
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                {mahalayaCountdown.isToday ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-xs animate-pulse">
-                    <Sparkles className="w-3 h-3 text-stone-950" />
-                    TODAY
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/40 shadow-2xs">
-                    <Clock className="w-3 h-3 text-[#B45309] dark:text-[#F59E0B]" />
-                    {mahalayaCountdown.badgeLabel}
-                  </span>
-                )}
-                <span className="text-micro font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider">
-                  Asia/Kolkata • October 10, 2026
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              {pujaStatus.isCountdown ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/40 shadow-2xs">
+                  <Clock className="w-3 h-3 text-[#B45309] dark:text-[#F59E0B]" />
+                  {pujaStatus.englishText}
                 </span>
-              </div>
-
-              <div className="flex flex-wrap items-baseline gap-2 pt-0.5">
-                <h3 className="font-bengali-serif font-black text-h4 sm:text-h3 text-[#991B1B] dark:text-amber-300">
-                  {mahalayaCountdown.headlineBn}
-                </h3>
-                <span className="font-display font-black text-small sm:text-body text-stone-900 dark:text-stone-100">
-                  • {mahalayaCountdown.headlineEn}
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-xs animate-pulse">
+                  <Sparkles className="w-3 h-3 text-stone-950" />
+                  {pujaStatus.type === 'MAHALAYA' ? 'TODAY' : 'FESTIVAL ACTIVE'}
                 </span>
-              </div>
-
-              <p className="text-small text-stone-700 dark:text-stone-300 font-medium line-clamp-1">
-                {mahalayaCountdown.subtextEn}
-              </p>
+              )}
+              <span className="text-micro font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider">
+                Asia/Kolkata • {pujaStatus.date}
+              </span>
             </div>
 
-            <div className="shrink-0 flex items-center gap-2 bg-white dark:bg-white/10 px-3 py-2 rounded-xl border border-amber-200/90 dark:border-white/15 shadow-2xs">
-              <span className="text-2xl" role="img" aria-label="shankha">
-                🐚
+            <div className="flex flex-wrap items-baseline gap-2 pt-0.5">
+              <h3 className="font-bengali-serif font-black text-h4 sm:text-h3 text-[#991B1B] dark:text-amber-300">
+                {pujaStatus.bengaliText}
+              </h3>
+              <span className="font-display font-black text-small sm:text-body text-stone-900 dark:text-stone-100">
+                • {pujaStatus.englishText}
               </span>
-              <div className="text-left">
-                <span className="text-micro font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 block">
-                  {mahalayaCountdown.isToday ? 'Live Ritual' : 'Auspicious Dawn'}
-                </span>
-                <span className="text-small font-bold text-stone-950 dark:text-stone-100">
-                  {mahalayaCountdown.isToday
-                    ? 'Ganga Tarpan & Chakkhu Daan'
-                    : 'Mahishasuramardini 4:00 AM'}
-                </span>
-              </div>
+            </div>
+
+            <p className="text-small text-stone-700 dark:text-stone-300 font-medium line-clamp-1">
+              {pujaStatus.isCountdown
+                ? 'Target: October 10, 2026 (Mahalaya) • Dawn Tarpan & Chakkhu Daan'
+                : 'শারদ পরিক্রমা ও লাইভ প্যান্ডেল দর্শন • #PujaTripMoments'}
+            </p>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-2 bg-white dark:bg-white/10 px-3 py-2 rounded-xl border border-amber-200/90 dark:border-white/15 shadow-2xs">
+            <span className="text-2xl" role="img" aria-label="shankha">
+              🐚
+            </span>
+            <div className="text-left">
+              <span className="text-micro font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 block">
+                {pujaStatus.isCountdown ? 'Auspicious Dawn' : 'Live Ritual'}
+              </span>
+              <span className="text-small font-bold text-stone-950 dark:text-stone-100">
+                {pujaStatus.isCountdown
+                  ? 'Mahishasuramardini 4:00 AM'
+                  : pujaStatus.englishText}
+              </span>
             </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* 1B. Weather Alert System & Rain Gear Notification (>60% Rain Threshold) */}
       <WeatherAlertSystem
@@ -364,6 +368,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
       </section>
 
+      {/* PWA App Installation Promotion */}
+      <PWAInstallCard variant="home" isDarkMode={isDarkMode} />
+
       {/* 4. Curated Ready-Made Routes */}
       <section id="curated-routes-section" className="space-y-2.5">
         <div className="flex items-center justify-between">
@@ -412,6 +419,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     alt={route.title}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
+                    onError={handleImageError}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <span className="absolute bottom-1 right-1 text-micro font-bold text-white bg-black/70 px-1.5 py-0.2 rounded tabular-nums">
@@ -479,6 +487,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     alt={pandal.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     referrerPolicy="no-referrer"
+                    onError={handleImageError}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 

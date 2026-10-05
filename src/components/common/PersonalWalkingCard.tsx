@@ -60,6 +60,8 @@ export const PersonalWalkingCard: React.FC<PersonalWalkingCardProps> = ({
 
   // Sync with walking events & config modifications
   useEffect(() => {
+    setStats(getWalkingSessionStats(tripId));
+
     const handleStatsUpdated = (e: Event) => {
       const customEvent = e as CustomEvent<WalkingSessionStats>;
       if (customEvent.detail) {

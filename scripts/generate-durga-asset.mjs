@@ -1,0 +1,219 @@
+import fs from 'fs';
+import path from 'path';
+import { Resvg } from '@resvg/resvg-js';
+
+const svgContent = `<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Radiant Divine Golden Halo -->
+    <radialGradient id="divineGlow" cx="50%" cy="48%" r="50%">
+      <stop offset="0%" stopColor="#FEF08A" stopOpacity="0.85" />
+      <stop offset="45%" stopColor="#F59E0B" stopOpacity="0.45" />
+      <stop offset="75%" stopColor="#D97706" stopOpacity="0.2" />
+      <stop offset="100%" stopColor="#78350F" stopOpacity="0" />
+    </radialGradient>
+
+    <!-- Metallic Gold Crown Gradient -->
+    <linearGradient id="goldCrown" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stopColor="#FFFBEB" />
+      <stop offset="25%" stopColor="#FDE68A" />
+      <stop offset="50%" stopColor="#F59E0B" />
+      <stop offset="75%" stopColor="#D97706" />
+      <stop offset="100%" stopColor="#92400E" />
+    </linearGradient>
+
+    <!-- Sholar Saaj Silver/White Accents -->
+    <linearGradient id="pearlWhite" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#FFFFFF" />
+      <stop offset="100%" stopColor="#FEF3C7" />
+    </linearGradient>
+
+    <!-- Sacred Red Vermillion / Alta Gradient -->
+    <linearGradient id="sacredRed" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#EF4444" />
+      <stop offset="50%" stopColor="#DC2626" />
+      <stop offset="100%" stopColor="#991B1B" />
+    </linearGradient>
+  </defs>
+
+  <!-- Aura Glow & Outer Ring -->
+  <circle cx="256" cy="256" r="240" fill="url(#divineGlow)" />
+  <circle cx="256" cy="256" r="236" stroke="#FEF08A" stroke-width="3" stroke-dasharray="10 8" opacity="0.75" />
+  <circle cx="256" cy="256" r="226" stroke="#F59E0B" stroke-width="1.5" opacity="0.6" />
+
+  <!-- Radiating Sunburst Rays -->
+  <g opacity="0.4" stroke="#FDE68A" stroke-width="2">
+    <line x1="256" y1="20" x2="256" y2="40" />
+    <line x1="256" y1="472" x2="256" y2="492" />
+    <line x1="20" y1="256" x2="40" y2="256" />
+    <line x1="472" y1="256" x2="492" y2="256" />
+    <line x1="89" y1="89" x2="103" y2="103" />
+    <line x1="409" y1="89" x2="395" y2="103" />
+    <line x1="89" y1="423" x2="103" y2="409" />
+    <line x1="409" y1="423" x2="395" y2="409" />
+  </g>
+
+  <!-- ==================== CROWN / MUKUT (DAAKER SAAJ) ==================== -->
+  <!-- Mukut Base Halo Arch -->
+  <path d="M120 220 C160 110, 352 110, 392 220 C360 170, 152 170, 120 220 Z" fill="url(#goldCrown)" stroke="#FFFBEB" stroke-width="2" />
+
+  <!-- Crown Tier 1 (Sholar Saaj Scalloped Arch) -->
+  <path d="M140 180 C180 80, 332 80, 372 180 C330 140, 182 140, 140 180 Z" fill="url(#goldCrown)" stroke="#FEF08A" stroke-width="2.5" />
+
+  <!-- Crown Apex Shikhara (Golden Kalash & Crescent) -->
+  <path d="M256 36 C240 70, 224 100, 256 124 C288 100, 272 70, 256 36 Z" fill="url(#goldCrown)" stroke="#FFFBEB" stroke-width="2.5" />
+  <circle cx="256" cy="28" r="10" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="2" />
+  <circle cx="256" cy="28" r="4" fill="#FEF08A" />
+
+  <!-- Crescent Moon on Mukut -->
+  <path d="M242 74 C252 64, 266 68, 270 74 C263 76, 248 76, 242 74 Z" fill="#FFFFFF" opacity="0.9" />
+
+  <!-- Crown Jewels & Rubies -->
+  <circle cx="256" cy="110" r="9" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.8" />
+  <circle cx="218" cy="130" r="7.5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.5" />
+  <circle cx="294" cy="130" r="7.5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.5" />
+  <circle cx="184" cy="154" r="6.5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.5" />
+  <circle cx="328" cy="154" r="6.5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.5" />
+
+  <!-- Pearl Strings hanging on Mukut -->
+  <g fill="url(#pearlWhite)" stroke="#D97706" stroke-width="0.8">
+    <circle cx="236" cy="122" r="4" />
+    <circle cx="276" cy="122" r="4" />
+    <circle cx="200" cy="144" r="3.5" />
+    <circle cx="312" cy="144" r="3.5" />
+    <circle cx="166" cy="170" r="3.2" />
+    <circle cx="346" cy="170" r="3.2" />
+  </g>
+
+  <!-- Crown Brow Band (Patti) with Floral Filigree -->
+  <path d="M110 226 C180 206, 332 206, 402 226 C360 216, 152 216, 110 226 Z" fill="url(#goldCrown)" stroke="#FFFBEB" stroke-width="2.5" />
+
+  <!-- ==================== SACRED DEVI FACE ==================== -->
+
+  <!-- Third Eye (Trinayan) on Forehead -->
+  <g id="trinayan">
+    <!-- Sacred Lotus Petal Third Eye Contour -->
+    <path d="M256 168 C232 200, 232 224, 256 250 C280 224, 280 200, 256 168 Z" fill="url(#sacredRed)" stroke="#FEF08A" stroke-width="2.5" />
+    <!-- Golden Core / Iris -->
+    <circle cx="256" cy="212" r="8" fill="#F59E0B" stroke="#FFFBEB" stroke-width="1.5" />
+    <!-- Pupil -->
+    <circle cx="256" cy="212" r="4.2" fill="#450712" />
+    <!-- Divine Sparkle -->
+    <circle cx="258" cy="210" r="1.8" fill="#FFFFFF" />
+    <!-- Chandan Bindi dots above Trinayan -->
+    <circle cx="256" cy="154" r="5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.2" />
+  </g>
+
+  <!-- Chandan (Sandalwood) Art Dots along Eyebrows -->
+  <g fill="#FFFDF5" opacity="0.9">
+    <circle cx="214" cy="234" r="2.8" />
+    <circle cx="196" cy="232" r="2.8" />
+    <circle cx="178" cy="232" r="2.8" />
+    <circle cx="160" cy="236" r="2.8" />
+    <circle cx="144" cy="244" r="2.8" />
+    <circle cx="298" cy="234" r="2.8" />
+    <circle cx="316" cy="232" r="2.8" />
+    <circle cx="334" cy="232" r="2.8" />
+    <circle cx="352" cy="236" r="2.8" />
+    <circle cx="368" cy="244" r="2.8" />
+  </g>
+
+  <!-- Arched Eyebrows (Traditional Bengali Bow-shaped Brows) -->
+  <path d="M136 256 C176 226, 226 238, 242 260" stroke="#FEF08A" stroke-width="8" stroke-linecap="round" fill="none" />
+  <path d="M138 255 C176 228, 224 239, 240 259" stroke="#450712" stroke-width="5" stroke-linecap="round" fill="none" />
+
+  <path d="M376 256 C336 226, 286 238, 270 260" stroke="#FEF08A" stroke-width="8" stroke-linecap="round" fill="none" />
+  <path d="M374 255 C336 228, 288 239, 272 259" stroke="#450712" stroke-width="5" stroke-linecap="round" fill="none" />
+
+  <!-- Sacred Almond Eyes (Patuya Style Kohl Eyes) -->
+  <!-- Left Eye -->
+  <g id="leftEye">
+    <path d="M142 278 C174 254, 224 254, 244 280 C222 302, 172 302, 142 278 Z" fill="#FFFFFF" stroke="#3E050F" stroke-width="4.5" stroke-linejoin="round" />
+    <!-- Extended Kajal Wing -->
+    <path d="M142 278 C128 275, 116 268, 108 260" stroke="#3E050F" stroke-width="4.5" stroke-linecap="round" />
+    <!-- Iris -->
+    <circle cx="198" cy="278" r="15" fill="#580816" stroke="#F59E0B" stroke-width="2" />
+    <circle cx="198" cy="278" r="8" fill="#1C0307" />
+    <!-- Highlight -->
+    <circle cx="202" cy="274" r="3.5" fill="#FFFFFF" />
+  </g>
+
+  <!-- Right Eye -->
+  <g id="rightEye">
+    <path d="M370 278 C338 254, 288 254, 268 280 C290 302, 340 302, 370 278 Z" fill="#FFFFFF" stroke="#3E050F" stroke-width="4.5" stroke-linejoin="round" />
+    <!-- Extended Kajal Wing -->
+    <path d="M370 278 C384 275, 396 268, 404 260" stroke="#3E050F" stroke-width="4.5" stroke-linecap="round" />
+    <!-- Iris -->
+    <circle cx="314" cy="278" r="15" fill="#580816" stroke="#F59E0B" stroke-width="2" />
+    <circle cx="314" cy="278" r="8" fill="#1C0307" />
+    <!-- Highlight -->
+    <circle cx="310" cy="274" r="3.5" fill="#FFFFFF" />
+  </g>
+
+  <!-- Sacred Nose Line & Delicate Tip -->
+  <path d="M256 256 L252 334 C252 342, 260 342, 266 338" stroke="#FDE68A" stroke-width="4.5" stroke-linecap="round" fill="none" />
+
+  <!-- Auspicious Large Bengali Nath (Ornate Nose Ring) -->
+  <g id="nathRing">
+    <!-- Golden Ring -->
+    <circle cx="298" cy="346" r="38" stroke="url(#goldCrown)" stroke-width="5" fill="none" />
+    <!-- Inner Pearl Beading -->
+    <circle cx="298" cy="346" r="33" stroke="#FFFBEB" stroke-width="1.8" stroke-dasharray="4 4" fill="none" />
+    <!-- Ruby Droplet Pendant at Bottom of Nath -->
+    <circle cx="298" cy="386" r="7.5" fill="url(#sacredRed)" stroke="#FFFBEB" stroke-width="1.8" />
+    <circle cx="298" cy="397" r="4.2" fill="#FEF08A" />
+    <circle cx="320" cy="378" r="5" fill="url(#pearlWhite)" stroke="#D97706" stroke-width="1" />
+    <!-- Golden Connecting Chain to Mukut / Ear -->
+    <path d="M334 336 C382 316, 412 284, 428 248" stroke="#FDE68A" stroke-width="3" stroke-dasharray="4 3" fill="none" />
+  </g>
+
+  <!-- Auspicious Divine Crimson Bengali Lips (Paan-shaped Smile) -->
+  <g id="deviLips">
+    <!-- Upper Lip -->
+    <path d="M226 384 C242 374, 252 378, 256 382 C260 378, 270 374, 286 384 C272 390, 240 390, 226 384 Z" fill="url(#sacredRed)" stroke="#7F1D1D" stroke-width="2" />
+    <!-- Lower Lip -->
+    <path d="M232 386 C244 402, 268 402, 280 386 C266 394, 246 394, 232 386 Z" fill="url(#sacredRed)" stroke="#7F1D1D" stroke-width="2" />
+  </g>
+
+  <!-- Traditional Shiuli Flowers flanking the Mukut -->
+  <g id="shiuliFlowers">
+    <!-- Left Flower -->
+    <g transform="translate(100, 230)">
+      <circle cx="0" cy="0" r="16" fill="#FFFDF9" stroke="#FEF08A" stroke-width="1.5" />
+      <circle cx="0" cy="0" r="6" fill="#EA580C" />
+    </g>
+    <!-- Right Flower -->
+    <g transform="translate(412, 230)">
+      <circle cx="0" cy="0" r="16" fill="#FFFDF9" stroke="#FEF08A" stroke-width="1.5" />
+      <circle cx="0" cy="0" r="6" fill="#EA580C" />
+    </g>
+  </g>
+</svg>`;
+
+async function main() {
+  const publicDir = path.resolve('public/assets/share');
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+  }
+
+  // 1. Write the SVG file
+  const svgPath = path.join(publicDir, 'durga-devi.svg');
+  fs.writeFileSync(svgPath, svgContent, 'utf-8');
+  console.log('Saved SVG to:', svgPath);
+
+  // 2. Render to PNG using Resvg
+  const resvg = new Resvg(svgContent, {
+    fitTo: {
+      mode: 'width',
+      value: 512,
+    },
+  });
+
+  const pngData = resvg.render();
+  const pngBuffer = pngData.asPng();
+
+  const pngPath = path.join(publicDir, 'durga-devi.png');
+  fs.writeFileSync(pngPath, pngBuffer);
+  console.log('Saved PNG to:', pngPath, 'Size:', pngBuffer.length, 'bytes');
+}
+
+main().catch(console.error);

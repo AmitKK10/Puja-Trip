@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Pandal, UserPreferences } from '../../types';
 import { DurgaThirdEye, DhakIcon, DhunuchiIcon, ShankhaIcon, AlpanaCorner, AlpanaDivider } from '../common/BengaliMotifs';
 import { CrowdIntensityIndicator } from '../common/CrowdIntensityIndicator';
@@ -11,6 +11,7 @@ import { FestiveCameraModal } from '../pandal/FestiveCameraModal';
 import { PandalQuickNotes } from '../pandal/PandalQuickNotes';
 import { CommunityGallery } from '../pandal/CommunityGallery';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
+import { handleImageError } from '../../utils/imageFallback';
 import confetti from 'canvas-confetti';
 import {
   ArrowLeft,
@@ -74,7 +75,18 @@ export const PandalDetailScreen: React.FC<PandalDetailScreenProps> = ({
 
   const { isCached, isEffectiveOffline } = useOfflinePandal(pandal);
 
+  const displayPhotos = useMemo(() => {
+    if (pandal.images && pandal.images.length > 0) return pandal.images;
+    if (pandal.photos && pandal.photos.length > 0) return pandal.photos;
+    return [pandal.heroImage];
+  }, [pandal]);
+
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+
+  useEffect(() => {
+    setActivePhotoIdx(0);
+  }, [pandal.id]);
+
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(25);
 
@@ -182,10 +194,11 @@ export const PandalDetailScreen: React.FC<PandalDetailScreenProps> = ({
       <div className="rounded-3xl overflow-hidden shadow-lg border border-stone-200 dark:border-stone-800 relative bg-black">
         <div className="h-64 sm:h-80 relative">
           <img
-            src={pandal.photos[activePhotoIdx] || pandal.heroImage}
+            src={displayPhotos[activePhotoIdx] || pandal.heroImage}
             alt={pandal.name}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
+            onError={handleImageError}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
@@ -236,10 +249,10 @@ export const PandalDetailScreen: React.FC<PandalDetailScreenProps> = ({
         </div>
 
         {/* Thumbnail Selector */}
-        {pandal.photos.length > 1 && (
+        {displayPhotos.length > 1 && (
           <div className="flex items-center justify-between gap-2 p-2.5 bg-stone-950 overflow-x-auto">
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {pandal.photos.map((photo, idx) => (
+              {displayPhotos.map((photo, idx) => (
                 <button
                   key={idx}
                   onClick={() => setActivePhotoIdx(idx)}
@@ -247,7 +260,7 @@ export const PandalDetailScreen: React.FC<PandalDetailScreenProps> = ({
                     activePhotoIdx === idx ? 'border-[#F59E0B] scale-105' : 'border-transparent opacity-60 hover:opacity-90'
                   }`}
                 >
-                  <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={handleImageError} />
                 </button>
               ))}
             </div>

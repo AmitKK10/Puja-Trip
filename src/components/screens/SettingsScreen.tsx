@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CityId, UserPreferences, UserWalkingEnergyConfig } from '../../types';
 import { getPuja2026CalendarItems } from '../../data/festivalCalendar2026';
 import { DurgaThirdEye, DhakIcon, ShankhaIcon, AlpanaCorner, AlpanaDivider } from '../common/BengaliMotifs';
+import { PWAInstallCard } from '../common/PWAInstallCard';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import {
   getWalkingEnergyConfig,
@@ -34,6 +35,7 @@ interface SettingsScreenProps {
   onUpdatePrefs: (updater: (prev: UserPreferences) => UserPreferences) => void;
   onCityChange: (city: CityId) => void;
   onOpenSplash: () => void;
+  onOpenDeveloper?: () => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -41,6 +43,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onUpdatePrefs,
   onCityChange,
   onOpenSplash,
+  onOpenDeveloper,
 }) => {
   const isDarkMode = userPrefs.themeMode === 'mahasaptami_night';
   const [walkingConfig, setWalkingConfig] = useState<UserWalkingEnergyConfig>(() =>
@@ -81,6 +84,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* PWA Standalone App Installation & Status */}
+      <PWAInstallCard variant="settings" isDarkMode={isDarkMode} />
 
       {/* 1. City & Region Preference */}
       <div
@@ -461,7 +467,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       </div>
 
-      {/* 6. Restart Splash / Reset & About */}
+      {/* 6. About Developer Section */}
+      <div
+        id="about-developer-settings-card"
+        onClick={onOpenDeveloper}
+        className={`p-4 rounded-3xl border shadow-sm transition-all cursor-pointer hover:shadow-md hover:scale-[1.01] ${
+          isDarkMode
+            ? 'bg-gradient-to-br from-[#3B1324]/70 via-[#281B23] to-[#1C1418] border-[#F59E0B]/30 text-white'
+            : 'bg-gradient-to-br from-[#FFF5F5] via-[#FFFDF9] to-[#FEF3C7]/40 border-[#DC2626]/20 text-stone-900'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Developer avatar */}
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#991B1B] via-[#DC2626] to-[#B45309] p-0.5 flex items-center justify-center shrink-0 shadow-md">
+              <div className="w-full h-full rounded-[14px] bg-[#2A121A] flex flex-col items-center justify-center text-white border border-amber-300/40">
+                <span className="font-display font-black text-body text-[#FEF08A]">AK</span>
+                <span className="text-[8px] font-mono tracking-widest text-amber-200 uppercase -mt-1 font-bold">DEV</span>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-display font-black text-h3 text-stone-950 dark:text-white truncate">
+                  About Developer
+                </span>
+                <span className="text-micro font-bold bg-[#DC2626]/10 text-[#991B1B] dark:text-[#FEF08A] px-2 py-0.5 rounded-full border border-[#DC2626]/20">
+                  Amit Kiran Kar
+                </span>
+              </div>
+              <p className="font-bengali text-small text-[#991B1B] dark:text-[#FEF08A] font-bold truncate">
+                ডেভেলপার পরিচিতি • Software Engineer & MERN Developer
+              </p>
+              <p className="text-micro text-stone-500 dark:text-stone-400 truncate mt-0.5">
+                Building practical, scalable and user-focused web applications.
+              </p>
+            </div>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-1 text-[#DC2626] dark:text-[#FEF08A] font-bold text-btn">
+            <span className="hidden sm:inline">View Profile</span>
+            <ChevronRight className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* 7. Restart Splash / Reset & About */}
       <div className="text-center space-y-2 pt-2">
         <button
           onClick={onOpenSplash}
@@ -471,6 +522,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </button>
 
         <AlpanaDivider color="#D97706" className="w-40 mx-auto opacity-50" />
+
+        {/* Small "Built by Amit Kiran Kar" entry at bottom of Settings */}
+        <div className="pt-1">
+          <button
+            onClick={onOpenDeveloper}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 text-small font-display font-bold text-stone-800 dark:text-stone-200 hover:text-[#DC2626] dark:hover:text-[#FEF08A] transition-colors cursor-pointer"
+          >
+            <span>Built by Amit Kiran Kar</span>
+            <span className="text-micro text-stone-400 font-normal">• About Developer →</span>
+          </button>
+        </div>
 
         <p className="text-micro text-stone-400 font-bengali max-w-md mx-auto leading-relaxed">
           PujaTrip • পূজাত্রিপ • Dedicated to the clay sculptors of Kumartuli, folk artists of Midnapore, and the immortal spirit of Bengal.

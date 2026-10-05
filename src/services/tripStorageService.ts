@@ -166,6 +166,8 @@ export const INITIAL_DEMO_TRIPS: TripPlan[] = [
     preferredTransport: 'mixed',
     maxWalkingDistanceMeters: 4000,
     selectedPandalIds: [
+      'contai-nandanik',
+      'contai-youth',
       'contai-central-bus-stand',
       'contai-sabuj-sangha',
       'contai-highschool-math',

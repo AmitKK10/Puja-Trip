@@ -14,7 +14,7 @@ export const CURATED_ROUTES: CuratedRoute[] = [
     bestTime: '08:00 AM - 12:30 PM (Morning Pushpanjali Slot)',
     transportMode: 'metro_walk',
     crowdStrategy: 'Morning slots have 70% lower queue time and allow peaceful photography of the clay protima.',
-    coverImage: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1000&q=80',
+    coverImage: 'https://i.pinimg.com/1200x/f1/55/ed/f155edb1ca965dc575f2f796379bcd4b.jpg',
     badge: 'Heritage & Bonedi'
   },
   {
@@ -30,8 +30,24 @@ export const CURATED_ROUTES: CuratedRoute[] = [
     bestTime: '04:30 PM - 10:30 PM (Sunset to Midnight)',
     transportMode: 'metro_walk',
     crowdStrategy: 'Visit Chetla Agrani by 5 PM, catch Ekdalia lights turning on at 6:30 PM, and finish with night adda at Maddox.',
-    coverImage: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
+    coverImage: 'https://i.pinimg.com/1200x/3b/84/5d/3b845d2e4ce6eb6b439f2e6969a9147a.jpg',
     badge: 'Popular Choice'
+  },
+  {
+    id: 'contai-town-mega-spectacle',
+    title: 'Contai Town Mega Spectacle & Illumination Trail',
+    bengaliTitle: 'কাঁথি শহর সেরা আকর্ষণ ও আলোক পরিক্রমা',
+    city: 'contai',
+    subtitle: 'Nandanik Heritage Sanctuary, Youth Guild Sheesh Mahal & Sabuj Sangha Terracotta',
+    description: 'The ultimate prime route through Kanthi town. Witness the colossal Sonar Kella installation at Contai Nandanik, the breathtaking million-mirror Sheesh Mahal at Contai Youth, and the celebrated Bishnupur terracotta marvel at Sabuj Sangha.',
+    pandalIds: ['contai-nandanik', 'contai-youth', 'contai-sabuj-sangha'],
+    totalDistanceKm: 3.2,
+    estimatedHours: 2.5,
+    bestTime: '05:00 PM - 09:30 PM (Evening Illumination Slot)',
+    transportMode: 'auto_circuit',
+    crowdStrategy: 'Visit Nandanik before 6 PM for daylight architectural appreciation, then proceed to Youth Guild for evening mirror illumination.',
+    coverImage: 'https://d3fphkxyf5o5bm.cloudfront.net/image-resize/format=webp,w=1200/1abTdDbfQOKDVM93m33HaNjLMUXb1zI95UYFrHbn',
+    badge: 'Town Champions'
   },
   {
     id: 'contai-coastal-terracotta-circuit',
@@ -46,7 +62,7 @@ export const CURATED_ROUTES: CuratedRoute[] = [
     bestTime: '03:30 PM - 09:00 PM (Afternoon into Seaside Dusk)',
     transportMode: 'auto_circuit',
     crowdStrategy: 'Start at Sabuj Sangha for daylight terracotta viewing, then cruise along Junput coastal road at sunset.',
-    coverImage: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
+    coverImage: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Durga_Puja_terracotta_work.jpg/1280px-Durga_Puja_terracotta_work.jpg',
     badge: 'Purba Medinipur Special'
   },
   {
@@ -62,7 +78,7 @@ export const CURATED_ROUTES: CuratedRoute[] = [
     bestTime: '05:00 AM - 08:30 AM (Dawn Slot) or VIP Pass',
     transportMode: 'car_hired',
     crowdStrategy: 'Arrive at dawn around 5:30 AM for breathtaking sunrise views with zero waiting line.',
-    coverImage: 'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+    coverImage: 'https://i.pinimg.com/736x/3f/33/d8/3f33d81ed81ce21cc64e1200d2cde23f.jpg',
     badge: 'Mega Grandeur'
   }
 ];

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CityId, Pandal, UserPreferences } from '../../types';
 import { DurgaThirdEye, ShankhaIcon, DhakIcon, AlpanaCorner } from '../common/BengaliMotifs';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
+import { handleImageError } from '../../utils/imageFallback';
 import confetti from 'canvas-confetti';
 import {
   Bookmark,
@@ -193,6 +194,7 @@ export const FavoritesScreen: React.FC<FavoritesScreenProps> = ({
                         alt={pandal.name}
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
+                        onError={handleImageError}
                       />
                       {isVisited && (
                         <div className="absolute inset-0 bg-emerald-900/60 flex items-center justify-center text-white">

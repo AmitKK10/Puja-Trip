@@ -3,6 +3,7 @@ import jsQR from 'jsqr';
 import confetti from 'canvas-confetti';
 import { Pandal } from '../../types';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
+import { handleImageError } from '../../utils/imageFallback';
 import { PandalCrowdHeatmap } from '../common/PandalCrowdHeatmap';
 import {
   Camera,
@@ -371,6 +372,7 @@ export const QRCodeScannerModal: React.FC<QRCodeScannerModalProps> = ({
                       alt={scannedResult.pandal.name}
                       className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover shrink-0 border border-black/10 shadow-sm"
                       referrerPolicy="no-referrer"
+                      onError={handleImageError}
                     />
                     <div className="space-y-1 flex-1 min-w-0">
                       <h4 className="font-display font-black text-h3 leading-tight truncate">

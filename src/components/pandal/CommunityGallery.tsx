@@ -53,116 +53,6 @@ interface CommunityGalleryProps {
 
 const STORAGE_KEY_PREFIX = 'pujatrip_community_photos_';
 
-// Curated festive placeholder image collection categorized by motif
-const FESTIVE_IMAGE_POOL: Record<
-  string,
-  Array<{
-    url: string;
-    captionTemplate: (pandal: Pandal) => string;
-    category: GalleryCategory;
-    tag: string;
-    impressiveness: number;
-  }>
-> = {
-  theme_marvel: [
-    {
-      url: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Close up of Maa Durga at ${p.name}. The clay sculpt and expression are mesmerizing!`,
-      category: 'idol',
-      tag: 'Sanctum Idol View',
-      impressiveness: 9.9,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Exterior architecture of ${p.name}. The intricate facade looks unbelievable under twilight lighting.`,
-      category: 'architecture',
-      tag: 'Grand Facade Art',
-      impressiveness: 9.8,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1542385151-efd9000785a0?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Illuminated gate and entry pavilion by Chandannagar artisans at ${p.name}.`,
-      category: 'lighting',
-      tag: 'Chandannagar Lights',
-      impressiveness: 9.7,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Ceiling and structural installation work inside the mandap. Pure genius craftsmanship.`,
-      category: 'architecture',
-      tag: 'Interior Installation',
-      impressiveness: 9.6,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1601662528567-526cd06f6582?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Evening dhunuchi aarti session underway. The rhythmic dhaak and smoke create pure magic.`,
-      category: 'ambiance',
-      tag: 'Dhunuchi Aarti Ambiance',
-      impressiveness: 9.8,
-    },
-  ],
-  traditional_sabeki: [
-    {
-      url: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Classic Ekchala Sabeki Protima at ${p.name} with immaculate Daaker Saaj.`,
-      category: 'idol',
-      tag: 'Sabeki Ekchala Protima',
-      impressiveness: 9.9,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `The eyes of Maa Durga (Chokh-daan) at ${p.name}. Divine peace and serene majesty.`,
-      category: 'idol',
-      tag: 'Divine Expression',
-      impressiveness: 9.8,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Heritage courtyard lighting at dusk. The vintage chandeliers and brass bells look royal.`,
-      category: 'lighting',
-      tag: 'Sabeki Illumination',
-      impressiveness: 9.6,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1601662528567-526cd06f6582?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Sandhya aarti ritual at ${p.name}. Devotees gathered as the kanshor and shankha echo.`,
-      category: 'ambiance',
-      tag: 'Evening Aarti Glow',
-      impressiveness: 9.7,
-    },
-  ],
-  general: [
-    {
-      url: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `The sanctum idol view at ${p.name} this year! Absolutely stunning artistry.`,
-      category: 'idol',
-      tag: 'Sanctum View',
-      impressiveness: 9.8,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Exterior architecture illuminated at 8:30 PM. The color coordination is remarkable.`,
-      category: 'lighting',
-      tag: 'Night Illumination',
-      impressiveness: 9.7,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Detailed craftsmanship of the ornaments and halo at ${p.name}.`,
-      category: 'architecture',
-      tag: 'Artisan Craftsmanship',
-      impressiveness: 9.5,
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1601662528567-526cd06f6582?auto=format&fit=crop&w=1000&q=80',
-      captionTemplate: (p) => `Festive crowd taking darshan at ${p.name}. Vibrant festival energy!`,
-      category: 'ambiance',
-      tag: 'Festive Darshan Mood',
-      impressiveness: 9.6,
-    },
-  ],
-};
-
 const SAMPLE_CONTRIBUTORS = [
   { name: 'Riddhima Das', time: '35m ago', camera: 'iPhone 15 Pro • 48MP' },
   { name: 'Sourav Banerjee', time: '1h ago', camera: 'Pixel 8 Pro • Night Sight' },
@@ -186,75 +76,57 @@ export const CommunityGallery: React.FC<CommunityGalleryProps> = ({
   const [newCategory, setNewCategory] = useState<GalleryCategory>('idol');
   const [newImageUrl, setNewImageUrl] = useState('');
 
-  // Initial photos builder
+  // Initial photos builder using strictly verified pandal photos
   const initialPhotos = useMemo(() => {
-    const pool =
-      FESTIVE_IMAGE_POOL[pandal.category] ||
-      FESTIVE_IMAGE_POOL.theme_marvel ||
-      FESTIVE_IMAGE_POOL.general;
-
-    // Use pandal's actual photos if available
     const baseItems: CommunityPhoto[] = [];
+    const validPhotos =
+      pandal.images && pandal.images.length > 0
+        ? pandal.images
+        : (pandal.photos && pandal.photos.length > 0 ? pandal.photos : [pandal.heroImage]);
 
-    // Add pandal hero or first photos
-    if (pandal.photos && pandal.photos.length > 0) {
-      pandal.photos.forEach((photoUrl, idx) => {
-        const contributor = SAMPLE_CONTRIBUTORS[idx % SAMPLE_CONTRIBUTORS.length];
-        const tags = ['Grand Facade', 'Sanctum Darshan', 'Night Illumination', 'Artistic Details'];
-        const cats: GalleryCategory[] = ['architecture', 'idol', 'lighting', 'architecture'];
+    validPhotos.forEach((photoUrl, idx) => {
+      const contributor = SAMPLE_CONTRIBUTORS[idx % SAMPLE_CONTRIBUTORS.length];
+      const tags = ['Grand Facade', 'Sanctum Darshan', 'Illumination View', 'Artistic Details'];
+      const cats: GalleryCategory[] = ['architecture', 'idol', 'lighting', 'architecture'];
 
-        baseItems.push({
-          id: `pandal_core_${idx}`,
-          pandalId: pandal.id,
-          imageUrl: photoUrl,
-          caption: idx === 0
-            ? `Official 2026 darshan view of ${pandal.name}. Theme: ${pandal.themeConcept}.`
+      baseItems.push({
+        id: `pandal_core_${idx}`,
+        pandalId: pandal.id,
+        imageUrl: photoUrl,
+        caption:
+          idx === 0
+            ? `Official darshan view of ${pandal.name}. ${pandal.themeConcept ? `Theme: ${pandal.themeConcept}.` : ''}`
             : `Visitor perspective of ${pandal.name} capturing the intricate decorative work.`,
-          contributorName: contributor.name,
-          timeAgo: contributor.time,
-          category: cats[idx % cats.length],
-          visualTag: tags[idx % tags.length],
-          likesCount: 124 + idx * 47,
-          impressivenessRating: Math.min(9.9, Math.round((pandal.themeQualityScore + (idx % 2 === 0 ? 0.1 : -0.1)) * 10) / 10),
-          cameraInfo: contributor.camera,
-        });
+        contributorName: contributor.name,
+        timeAgo: contributor.time,
+        category: cats[idx % cats.length],
+        visualTag: tags[idx % tags.length],
+        likesCount: 124 + idx * 47,
+        impressivenessRating: Math.min(
+          9.9,
+          Math.round(((pandal.themeQualityScore || 9.6) + (idx % 2 === 0 ? 0.1 : -0.1)) * 10) / 10
+        ),
+        cameraInfo: contributor.camera,
       });
-    }
-
-    // Add from curated pool to ensure at least 5 rich community photos
-    pool.forEach((item, idx) => {
-      // Avoid duplicate URLs
-      if (!baseItems.some((b) => b.imageUrl === item.url)) {
-        const contributor = SAMPLE_CONTRIBUTORS[(idx + 2) % SAMPLE_CONTRIBUTORS.length];
-        baseItems.push({
-          id: `pool_${idx}`,
-          pandalId: pandal.id,
-          imageUrl: item.url,
-          caption: item.captionTemplate(pandal),
-          contributorName: contributor.name,
-          timeAgo: contributor.time,
-          category: item.category,
-          visualTag: item.tag,
-          likesCount: 88 + idx * 31,
-          impressivenessRating: item.impressiveness,
-          cameraInfo: contributor.camera,
-        });
-      }
     });
 
     return baseItems;
   }, [pandal]);
 
-  // Persistent community photos with local storage merge
+  // Persistent community photos with local storage merge (filter legacy unsplash URLs)
   const [photos, setPhotos] = useState<CommunityPhoto[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge user-saved with initial
-          const userSaved = parsed.filter((p: CommunityPhoto) => p.isUserUploaded);
-          return [...userSaved, ...initialPhotos];
+          const userSaved = parsed.filter(
+            (p: CommunityPhoto) =>
+              p.isUserUploaded && p.imageUrl && !p.imageUrl.includes('unsplash.com')
+          );
+          if (userSaved.length > 0) {
+            return [...userSaved, ...initialPhotos];
+          }
         }
       }
     } catch {
@@ -270,9 +142,14 @@ export const CommunityGallery: React.FC<CommunityGalleryProps> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const userSaved = parsed.filter((p: CommunityPhoto) => p.isUserUploaded);
-          setPhotos([...userSaved, ...initialPhotos]);
-          return;
+          const userSaved = parsed.filter(
+            (p: CommunityPhoto) =>
+              p.isUserUploaded && p.imageUrl && !p.imageUrl.includes('unsplash.com')
+          );
+          if (userSaved.length > 0) {
+            setPhotos([...userSaved, ...initialPhotos]);
+            return;
+          }
         }
       }
     } catch {
@@ -328,31 +205,19 @@ export const CommunityGallery: React.FC<CommunityGalleryProps> = ({
     return Math.round((sum / photos.length) * 10) / 10;
   }, [photos, pandal.themeQualityScore]);
 
-  // Quick preset images for contributing
+  // Quick preset images for contributing using verified pandal photography
   const CONTRIBUTION_PRESETS = [
     {
-      label: 'Idol Darshan Close-up',
-      url: 'https://images.unsplash.com/photo-1571597438372-540dd352bf41?auto=format&fit=crop&w=1000&q=80',
+      label: 'Idol Darshan Sanctum',
+      url: (pandal.images && pandal.images[0]) || pandal.photos[0] || pandal.heroImage,
       category: 'idol' as GalleryCategory,
       tag: 'Sanctum Idol View',
     },
     {
-      label: 'Night Lighting & Mandap',
-      url: 'https://images.unsplash.com/photo-1602848597941-0501d52d9a9f?auto=format&fit=crop&w=1000&q=80',
+      label: 'Architecture & Illumination',
+      url: (pandal.images && (pandal.images[1] || pandal.images[0])) || pandal.photos[1] || pandal.photos[0] || pandal.heroImage,
       category: 'lighting' as GalleryCategory,
       tag: 'Night Illumination',
-    },
-    {
-      label: 'Artisan Architecture',
-      url: 'https://images.unsplash.com/photo-1596178060671-7a80dc8059ea?auto=format&fit=crop&w=1000&q=80',
-      category: 'architecture' as GalleryCategory,
-      tag: 'Mandap Craftsmanship',
-    },
-    {
-      label: 'Dhunuchi & Aarti Celebration',
-      url: 'https://images.unsplash.com/photo-1601662528567-526cd06f6582?auto=format&fit=crop&w=1000&q=80',
-      category: 'ambiance' as GalleryCategory,
-      tag: 'Aarti & Ambiance',
     },
   ];
 

@@ -70,8 +70,12 @@ export function saveWalkingEnergyConfig(config: Partial<UserWalkingEnergyConfig>
   const updated = { ...current, ...config };
   try {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(updated));
-    // Trigger custom storage event for live UI reactivity
-    window.dispatchEvent(new CustomEvent('pujatrip_walking_config_changed', { detail: updated }));
+    // Asynchronous dispatch to avoid updating React state synchronously during render passes
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('pujatrip_walking_config_changed', { detail: updated }));
+      }, 0);
+    }
   } catch (e) {
     console.error('Failed to save walking config', e);
   }
@@ -122,7 +126,12 @@ export function saveWalkingSessionStats(stats: WalkingSessionStats): void {
   const key = `${STORAGE_KEY_PREFIX}${stats.tripId || 'general'}_${stats.date}`;
   try {
     localStorage.setItem(key, JSON.stringify(stats));
-    window.dispatchEvent(new CustomEvent('pujatrip_walking_stats_updated', { detail: stats }));
+    // Asynchronous dispatch to avoid updating React state synchronously during render passes
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('pujatrip_walking_stats_updated', { detail: stats }));
+      }, 0);
+    }
   } catch (e) {
     console.error('Failed to save walking session stats', e);
   }
@@ -232,7 +241,12 @@ export function seedSampleWalkingStatsIfEmpty(tripId: string, initialKm: number 
       },
       lastUpdated: new Date().toISOString(),
     };
-    saveWalkingSessionStats(initial);
+    const key = `${STORAGE_KEY_PREFIX}${initial.tripId || 'general'}_${initial.date}`;
+    try {
+      localStorage.setItem(key, JSON.stringify(initial));
+    } catch (e) {
+      console.error('Failed to save seeded walking stats', e);
+    }
     return initial;
   }
   return current;

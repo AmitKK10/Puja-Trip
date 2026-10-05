@@ -18,6 +18,7 @@ import {
   Award,
 } from 'lucide-react';
 import { DurgaThirdEye, AlpanaCorner } from '../common/BengaliMotifs';
+import { handleImageError } from '../../utils/imageFallback';
 
 interface PandalChecklistProps {
   pandals: Pandal[];
@@ -294,9 +295,10 @@ export const PandalChecklist: React.FC<PandalChecklistProps> = ({
                   className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 relative cursor-pointer border border-black/10 dark:border-white/10"
                 >
                   <img
-                    src={pandal.heroImage || pandal.photos?.[0] || 'https://images.unsplash.com/photo-1596895111956-bf1cf0599ce5?w=500'}
+                    src={pandal.heroImage || pandal.photos?.[0]}
                     alt={pandal.name}
                     referrerPolicy="no-referrer"
+                    onError={handleImageError}
                     className={`w-full h-full object-cover transition-all duration-500 ${
                       isDone ? 'grayscale-[40%] contrast-90' : 'group-hover:scale-105'
                     }`}

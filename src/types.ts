@@ -275,6 +275,7 @@ export interface Pandal {
   description: string;
   fullHistory: string;
   photos: string[];
+  images?: string[];
   heroImage: string;
   audioGuideUrl?: string;
   audioDurationSeconds: number;
@@ -1027,10 +1028,12 @@ export interface GroupTripProgressSummary {
   }[];
 }
 
+export type TransportMode = 'walking' | 'metro' | 'bus' | 'car' | 'mixed' | 'auto';
+
 export interface GroupActivityEvent {
   id: string;
   tripId: string;
-  type: 'member_joined' | 'pandal_added' | 'pandal_removed' | 'stop_reordered' | 'darshan_completed' | 'crowd_reported' | 'expense_added' | 'location_started' | 'location_stopped';
+  type: 'member_joined' | 'member_left' | 'pandal_added' | 'pandal_removed' | 'stop_reordered' | 'darshan_completed' | 'crowd_reported' | 'expense_added' | 'location_started' | 'location_stopped';
   userId: string;
   userName: string;
   userAvatar?: string;

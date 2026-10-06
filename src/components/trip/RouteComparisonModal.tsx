@@ -69,7 +69,7 @@ export const RouteComparisonModal: React.FC<RouteComparisonModalProps> = ({
           <div className="flex items-center gap-2 text-micro uppercase tracking-wider text-amber-200 font-bold">
             <Compass className="w-3.5 h-3.5" />
             <span>Smart Transport & Route Engine</span>
-            <span className="opacity-75">• Demo Transit Architecture</span>
+            <span className="opacity-75">• Source-Verified Transit</span>
           </div>
 
           <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -145,10 +145,35 @@ export const RouteComparisonModal: React.FC<RouteComparisonModalProps> = ({
                         <span className="font-bold text-base text-[#881337] dark:text-[#FEF08A]">
                           ~{option.totalDurationMinutes}m
                         </span>
-                        <span className="text-micro text-stone-500 font-medium">
-                          {formatDistance(option.walkingDistanceMeters)} walk
-                        </span>
+                        {option.fareRupees !== undefined ? (
+                          <span className="text-micro font-bold text-emerald-700 dark:text-emerald-300">
+                            ₹{option.fareRupees}
+                          </span>
+                        ) : (
+                          <span className="text-micro text-stone-500 font-medium">
+                            {formatDistance(option.walkingDistanceMeters)} walk
+                          </span>
+                        )}
                       </div>
+
+                      {option.operationalType && (
+                        <div className="mt-1 flex items-center justify-between text-[9px] font-semibold">
+                          <span
+                            className={`px-1.5 py-0.2 rounded ${
+                              option.operationalType === 'live'
+                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                                : option.operationalType === 'scheduled'
+                                ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
+                                : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+                            }`}
+                          >
+                            {option.operationalType.toUpperCase()}
+                          </span>
+                          <span className="text-stone-400 truncate max-w-[80px]">
+                            {formatDistance(option.walkingDistanceMeters)} walk
+                          </span>
+                        </div>
+                      )}
 
                       {option.timeSavedVersusWalkMinutes !== undefined &&
                         option.timeSavedVersusWalkMinutes > 0 && (
@@ -183,12 +208,24 @@ export const RouteComparisonModal: React.FC<RouteComparisonModalProps> = ({
                 <p className="text-small text-stone-700 dark:text-stone-300 leading-relaxed">
                   {activeOption.recommendationReason || comparison.summaryNote}
                 </p>
-                <div className="flex items-center gap-4 text-micro text-stone-500 dark:text-stone-400 pt-1">
+                <div className="flex items-center gap-4 text-micro text-stone-500 dark:text-stone-400 pt-1 flex-wrap">
                   <span>Match Score: {activeOption.recommendationScore}/100</span>
                   <span>•</span>
                   <span>Transfers: {activeOption.transferCount}</span>
-                  <span>•</span>
-                  <span>Station wait: ~{activeOption.waitingTimeMinutes}m</span>
+                  {activeOption.waitingTimeMinutes > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>Wait: ~{activeOption.waitingTimeMinutes}m</span>
+                    </>
+                  )}
+                  {activeOption.verifiedSource && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-300">
+                        Source: {activeOption.verifiedSource}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

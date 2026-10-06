@@ -14,9 +14,17 @@ import {
   CityId,
   PandalGroupVisitSummary,
   GroupTripProgressSummary,
+  TripDayPlan,
+  SquadJoinRequest,
+  SquadSettings,
+  SharedPandalVisitEvent,
+  Pandal,
 } from '../types';
 import { getSupabase, isSupabaseConfigured } from './supabaseClient';
 import { getSavedTrips, saveTrip, createTrip } from './tripStorageService';
+import { durgaPuja2026Dates, getTodayTithiInfo } from '../data/festivalCalendar2026';
+import { calculateDistanceKm } from '../utils/geoUtils';
+import { ensureValidUuid, generateCleanUuid } from '../utils/userProfileHelper';
 
 export { saveTrip };
 
@@ -658,9 +666,16 @@ export const getTripMembers = (tripId: string): TripMember[] => {
 };
 
 export const getMyTripGroups = (userId?: string): SharedTripGroup[] => {
-  const targetId = userId || getCurrentUserProfile().id;
+  const current = getCurrentUserProfile();
+  const targetId = userId || current.id;
+  const validUid = ensureValidUuid(targetId);
   const groups = getStoredGroups();
-  return groups.filter((g) => g.members.some((m) => m.userId === targetId));
+  return groups.filter(
+    (g) =>
+      g.createdBy === targetId ||
+      g.createdBy === validUid ||
+      g.members.some((m) => m.userId === targetId || m.userId === validUid)
+  );
 };
 
 export const createSharedTripGroup = async (
@@ -668,7 +683,8 @@ export const createSharedTripGroup = async (
   creatorProfile: UserProfile
 ): Promise<SharedTripGroup> => {
   const inviteCode = generateInviteCode(tripData.city);
-  const newTripId = `group_${tripData.city}_${Date.now()}`;
+  const newTripId = generateCleanUuid();
+  const validCreatorId = ensureValidUuid(creatorProfile.id);
   const now = new Date().toISOString();
 
   const newTrip: TripPlan = {
@@ -683,6 +699,7 @@ export const createSharedTripGroup = async (
     tripId: newTripId,
     userId: creatorProfile.id,
     role: 'admin',
+    isOwner: true,
     joinedAt: now,
     lastActiveAt: now,
     profile: creatorProfile,
@@ -707,6 +724,11 @@ export const createSharedTripGroup = async (
     myRole: 'admin',
     isSupabaseSynced: isSupabaseConfigured,
     recentActivities: [initialActivity],
+    joinRequests: [],
+    settings: {
+      joinApprovalMode: 'admin_approval',
+      visitPermissionMode: 'everyone',
+    },
   };
 
   // Save to local storage
@@ -736,13 +758,16 @@ export const createSharedTripGroup = async (
         max_walking_distance_meters: newTrip.maxWalkingDistanceMeters,
         invite_code: inviteCode,
         notes: newTrip.notes,
-        created_by: creatorProfile.id,
+        description: newTrip.description,
+        emblem: newTrip.emblem,
+        created_by: validCreatorId,
       });
 
       await supabase.from('trip_members').insert({
         trip_id: newTripId,
-        user_id: creatorProfile.id,
+        user_id: validCreatorId,
         role: 'admin',
+        is_owner: true,
       });
 
       // Insert trip pandals
@@ -751,12 +776,12 @@ export const createSharedTripGroup = async (
           trip_id: newTripId,
           pandal_id: pId,
           stop_order: idx + 1,
-          added_by: creatorProfile.id,
+          added_by: validCreatorId,
         }));
         await supabase.from('trip_pandals').insert(pandalRows);
       }
     } catch (err) {
-      console.warn('Error creating trip in Supabase:', err);
+      console.warn('Supabase trip creation error:', err);
     }
   }
 
@@ -764,6 +789,7 @@ export const createSharedTripGroup = async (
   groupBroadcastChannel?.postMessage({
     type: 'GROUP_CREATED',
     tripId: newTripId,
+    group: newGroup,
   });
 
   return newGroup;
@@ -795,96 +821,391 @@ export const convertLocalTripToSharedGroup = async (
   );
 };
 
+// ============================================================================
+// SQUAD INVITE CODE & SUPABASE QUERIES
+// ============================================================================
+
+/**
+ * Fetches squad metadata and active member roster by invite code.
+ * Queries Supabase first (source of truth), then falls back to local storage.
+ */
+export const fetchSquadByInviteCode = async (
+  inviteCode: string
+): Promise<{ group: SharedTripGroup | null; error: string | null }> => {
+  const cleanCode = inviteCode.trim().toUpperCase();
+  if (!cleanCode) return { group: null, error: 'Please enter a valid invite code.' };
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { data: dbTrip, error: fetchErr } = await supabase
+        .from('trips')
+        .select(`
+          *,
+          trip_pandals (*),
+          trip_members (
+            id,
+            trip_id,
+            user_id,
+            role,
+            is_owner,
+            joined_at,
+            last_active_at,
+            profiles:user_id (
+              id,
+              display_name,
+              bengali_name,
+              avatar_url,
+              email
+            )
+          ),
+          trip_join_requests (*)
+        `)
+        .eq('invite_code', cleanCode)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.warn('Supabase invite lookup error:', fetchErr);
+      }
+
+      if (dbTrip) {
+        // Map members
+        const members: TripMember[] = (dbTrip.trip_members || []).map((m: any) => {
+          const prof = m.profiles || {};
+          const isOwner = Boolean(m.is_owner || dbTrip.created_by === m.user_id);
+          return {
+            id: m.id || `mem_${m.user_id}`,
+            tripId: dbTrip.id,
+            userId: m.user_id,
+            role: m.role || (isOwner ? 'admin' : 'member'),
+            isOwner,
+            joinedAt: m.joined_at || dbTrip.created_at || new Date().toISOString(),
+            lastActiveAt: m.last_active_at || new Date().toISOString(),
+            profile: {
+              id: m.user_id,
+              displayName: prof.display_name || 'Puja Hopper',
+              bengaliName: prof.bengali_name,
+              avatarUrl: prof.avatar_url || 'dhunuchi_dancer',
+              email: prof.email,
+              isLocationSharingEnabled: true,
+              lastSeenAt: m.last_active_at || new Date().toISOString(),
+              isOnline: true,
+              createdAt: m.joined_at || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+
+        // Map pandals
+        const pandalIds = (dbTrip.trip_pandals || [])
+          .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
+          .map((tp: any) => tp.pandal_id);
+
+        // Map join requests
+        const joinRequests: SquadJoinRequest[] = (dbTrip.trip_join_requests || []).map((r: any) => ({
+          id: r.id,
+          tripId: r.trip_id,
+          userId: r.user_id,
+          userName: r.user_name || 'Member',
+          userAvatar: r.user_avatar || 'dhunuchi_dancer',
+          status: r.status,
+          requestedAt: r.requested_at,
+        }));
+
+        const sharedTrip: TripPlan = {
+          id: dbTrip.id,
+          name: dbTrip.name,
+          bengaliName: dbTrip.bengali_name,
+          city: dbTrip.city,
+          date: dbTrip.date || '2026-10-19',
+          startTime: dbTrip.start_time || '17:00',
+          endTime: dbTrip.end_time || '23:30',
+          startLocation: dbTrip.start_location || { name: 'Shyambazar Crossing', latitude: 22.6038, longitude: 88.3703 },
+          endLocation: dbTrip.end_location || { name: 'College Square', latitude: 22.5765, longitude: 88.3636 },
+          walkingPreference: dbTrip.walking_preference || 'balanced',
+          preferredTransport: dbTrip.preferred_transport || 'metro',
+          maxWalkingDistanceMeters: dbTrip.max_walking_distance_meters || 5000,
+          selectedPandalIds: pandalIds,
+          isCustomTrip: true,
+          notes: dbTrip.notes,
+          description: dbTrip.description,
+          emblem: dbTrip.emblem,
+          createdAt: dbTrip.created_at,
+          updatedAt: dbTrip.updated_at,
+        };
+
+        const group: SharedTripGroup = {
+          trip: sharedTrip,
+          inviteCode: cleanCode,
+          createdBy: dbTrip.created_by,
+          members: members.length > 0 ? members : [
+            {
+              id: `mem_${dbTrip.created_by}`,
+              tripId: dbTrip.id,
+              userId: dbTrip.created_by,
+              role: 'admin',
+              isOwner: true,
+              joinedAt: dbTrip.created_at,
+              lastActiveAt: new Date().toISOString(),
+            }
+          ],
+          myRole: 'member',
+          isSupabaseSynced: true,
+          recentActivities: [],
+          joinRequests,
+          settings: {
+            joinApprovalMode: 'admin_approval',
+            visitPermissionMode: 'everyone',
+          },
+        };
+
+        // Cache locally for snappy reloads
+        const currentGroups = getStoredGroups();
+        const existingIdx = currentGroups.findIndex(
+          (g) => g.inviteCode.toUpperCase() === cleanCode || g.trip.id === dbTrip.id
+        );
+        if (existingIdx >= 0) {
+          currentGroups[existingIdx] = {
+            ...currentGroups[existingIdx],
+            ...group,
+            members: group.members.length > 0 ? group.members : currentGroups[existingIdx].members,
+            joinRequests: group.joinRequests,
+          };
+        } else {
+          currentGroups.unshift(group);
+        }
+        saveStoredGroups(currentGroups);
+        saveTrip(sharedTrip);
+
+        return { group, error: null };
+      }
+    } catch (err: any) {
+      console.warn('Error querying Supabase for invite code:', err);
+    }
+  }
+
+  // Fallback to local storage
+  const groups = getStoredGroups();
+  const found = groups.find((g) => g.inviteCode.toUpperCase() === cleanCode);
+  if (found) {
+    return { group: found, error: null };
+  }
+
+  return {
+    group: null,
+    error: `Invalid or expired squad invite code "${cleanCode}".`,
+  };
+};
+
+/**
+ * Loads all squads that the user belongs to or created from Supabase.
+ * Merges with local storage and returns the updated squad list.
+ */
+export const fetchUserSquadsFromSupabase = async (
+  userId?: string
+): Promise<SharedTripGroup[]> => {
+  const currentUserId = userId || getCurrentUserProfile().id;
+  const supabase = getSupabase();
+  const localGroups = getStoredGroups();
+
+  if (!supabase || !currentUserId) {
+    return localGroups;
+  }
+
+  try {
+    const validUid = ensureValidUuid(currentUserId);
+    // 1. Get trip IDs where user is member
+    const { data: memRows } = await supabase
+      .from('trip_members')
+      .select('trip_id')
+      .or(`user_id.eq.${currentUserId},user_id.eq.${validUid}`);
+
+    // 2. Get trips created by user
+    const { data: createdTrips } = await supabase
+      .from('trips')
+      .select('id')
+      .or(`created_by.eq.${currentUserId},created_by.eq.${validUid}`);
+
+    const memberTripIds = (memRows || []).map((m: any) => m.trip_id);
+    const createdTripIds = (createdTrips || []).map((t: any) => t.id);
+    const allTripIds = Array.from(new Set([...memberTripIds, ...createdTripIds]));
+
+    if (allTripIds.length === 0) {
+      return localGroups;
+    }
+
+    // 3. Fetch full squad records
+    const { data: tripsData, error: tripsErr } = await supabase
+      .from('trips')
+      .select(`
+        *,
+        trip_pandals (*),
+        trip_members (
+          id,
+          trip_id,
+          user_id,
+          role,
+          is_owner,
+          joined_at,
+          last_active_at,
+          profiles:user_id (
+            id,
+            display_name,
+            bengali_name,
+            avatar_url,
+            email
+          )
+        ),
+        trip_join_requests (*)
+      `)
+      .in('id', allTripIds);
+
+    if (tripsErr) {
+      console.warn('Error fetching user squads from Supabase:', tripsErr);
+      return localGroups;
+    }
+
+    if (tripsData && tripsData.length > 0) {
+      const syncedGroups: SharedTripGroup[] = tripsData.map((dbTrip: any) => {
+        const members: TripMember[] = (dbTrip.trip_members || []).map((m: any) => {
+          const prof = m.profiles || {};
+          const isOwner = Boolean(m.is_owner || dbTrip.created_by === m.user_id);
+          return {
+            id: m.id || `mem_${m.user_id}`,
+            tripId: dbTrip.id,
+            userId: m.user_id,
+            role: m.role || (isOwner ? 'admin' : 'member'),
+            isOwner,
+            joinedAt: m.joined_at || dbTrip.created_at || new Date().toISOString(),
+            lastActiveAt: m.last_active_at || new Date().toISOString(),
+            profile: {
+              id: m.user_id,
+              displayName: prof.display_name || 'Puja Hopper',
+              bengaliName: prof.bengali_name,
+              avatarUrl: prof.avatar_url || 'dhunuchi_dancer',
+              email: prof.email,
+              isLocationSharingEnabled: true,
+              lastSeenAt: m.last_active_at || new Date().toISOString(),
+              isOnline: true,
+              createdAt: m.joined_at || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+
+        const pandalIds = (dbTrip.trip_pandals || [])
+          .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
+          .map((tp: any) => tp.pandal_id);
+
+        const joinRequests: SquadJoinRequest[] = (dbTrip.trip_join_requests || []).map((r: any) => ({
+          id: r.id,
+          tripId: r.trip_id,
+          userId: r.user_id,
+          userName: r.user_name || 'Member',
+          userAvatar: r.user_avatar || 'dhunuchi_dancer',
+          status: r.status,
+          requestedAt: r.requested_at,
+        }));
+
+        const isOwner = dbTrip.created_by === currentUserId || dbTrip.created_by === validUid;
+        const myMembership = members.find((m) => m.userId === currentUserId || m.userId === validUid);
+        const myRole: MemberRole = isOwner || myMembership?.role === 'admin' ? 'admin' : 'member';
+
+        const sharedTrip: TripPlan = {
+          id: dbTrip.id,
+          name: dbTrip.name,
+          bengaliName: dbTrip.bengali_name,
+          city: dbTrip.city,
+          date: dbTrip.date || '2026-10-19',
+          startTime: dbTrip.start_time || '17:00',
+          endTime: dbTrip.end_time || '23:30',
+          startLocation: dbTrip.start_location || { name: 'Shyambazar Crossing', latitude: 22.6038, longitude: 88.3703 },
+          endLocation: dbTrip.end_location || { name: 'College Square', latitude: 22.5765, longitude: 88.3636 },
+          walkingPreference: dbTrip.walking_preference || 'balanced',
+          preferredTransport: dbTrip.preferred_transport || 'metro',
+          maxWalkingDistanceMeters: dbTrip.max_walking_distance_meters || 5000,
+          selectedPandalIds: pandalIds,
+          isCustomTrip: true,
+          notes: dbTrip.notes,
+          description: dbTrip.description,
+          emblem: dbTrip.emblem,
+          createdAt: dbTrip.created_at,
+          updatedAt: dbTrip.updated_at,
+        };
+
+        return {
+          trip: sharedTrip,
+          inviteCode: dbTrip.invite_code,
+          createdBy: dbTrip.created_by,
+          members: members.length > 0 ? members : [
+            {
+              id: `mem_${dbTrip.created_by}`,
+              tripId: dbTrip.id,
+              userId: dbTrip.created_by,
+              role: 'admin',
+              isOwner: true,
+              joinedAt: dbTrip.created_at,
+              lastActiveAt: new Date().toISOString(),
+            }
+          ],
+          myRole,
+          isSupabaseSynced: true,
+          recentActivities: [],
+          joinRequests,
+          settings: {
+            joinApprovalMode: 'admin_approval',
+            visitPermissionMode: 'everyone',
+          },
+        };
+      });
+
+      // Merge into local cache
+      const mergedMap = new Map<string, SharedTripGroup>();
+      localGroups.forEach((g) => mergedMap.set(g.trip.id, g));
+      syncedGroups.forEach((sg) => mergedMap.set(sg.trip.id, sg));
+
+      const finalGroups = Array.from(mergedMap.values());
+      saveStoredGroups(finalGroups);
+      return finalGroups.filter(
+        (g) =>
+          g.createdBy === currentUserId ||
+          g.createdBy === validUid ||
+          g.members.some((m) => m.userId === currentUserId || m.userId === validUid)
+      );
+    }
+  } catch (err) {
+    console.warn('Error in fetchUserSquadsFromSupabase:', err);
+  }
+
+  return localGroups;
+};
+
 // Join Trip by unique 6-char Invite Code (e.g. "KP26X7")
 export const joinTripByInviteCode = async (
   inviteCode: string,
   userProfile: UserProfile
 ): Promise<{ group: SharedTripGroup | null; error: string | null }> => {
   const cleanCode = inviteCode.trim().toUpperCase();
-  const groups = getStoredGroups();
-  const target = groups.find((g) => g.inviteCode.toUpperCase() === cleanCode);
+  const { group: target, error: lookupErr } = await fetchSquadByInviteCode(cleanCode);
 
   if (!target) {
-    // Check in Supabase if live
-    const supabase = getSupabase();
-    if (supabase) {
-      try {
-        const { data: dbTrip } = await supabase
-          .from('trips')
-          .select('*, trip_pandals(*)')
-          .eq('invite_code', cleanCode)
-          .single();
-
-        if (dbTrip) {
-          // Join on Supabase
-          await supabase.from('trip_members').upsert({
-            trip_id: dbTrip.id,
-            user_id: userProfile.id,
-            role: 'member',
-          });
-
-          // Fetch full group
-          const sharedTrip: TripPlan = {
-            id: dbTrip.id,
-            name: dbTrip.name,
-            bengaliName: dbTrip.bengali_name,
-            city: dbTrip.city,
-            date: dbTrip.date,
-            startTime: dbTrip.start_time,
-            endTime: dbTrip.end_time,
-            startLocation: dbTrip.start_location,
-            endLocation: dbTrip.end_location,
-            walkingPreference: dbTrip.walking_preference,
-            preferredTransport: dbTrip.preferred_transport,
-            maxWalkingDistanceMeters: dbTrip.max_walking_distance_meters,
-            selectedPandalIds: (dbTrip.trip_pandals || [])
-              .sort((a: any, b: any) => a.stop_order - b.stop_order)
-              .map((tp: any) => tp.pandal_id),
-            isCustomTrip: true,
-            createdAt: dbTrip.created_at,
-            updatedAt: dbTrip.updated_at,
-          };
-
-          const newGroup: SharedTripGroup = {
-            trip: sharedTrip,
-            inviteCode: cleanCode,
-            createdBy: dbTrip.created_by,
-            members: [
-              {
-                id: `mem_${Date.now()}`,
-                tripId: dbTrip.id,
-                userId: userProfile.id,
-                role: 'member',
-                joinedAt: new Date().toISOString(),
-                lastActiveAt: new Date().toISOString(),
-                profile: userProfile,
-              },
-            ],
-            myRole: 'member',
-            isSupabaseSynced: true,
-            recentActivities: [],
-          };
-          groups.push(newGroup);
-          saveStoredGroups(groups);
-          saveTrip(sharedTrip);
-          return { group: newGroup, error: null };
-        }
-      } catch (err: any) {
-        console.warn('Supabase join lookup error:', err);
-      }
-    }
-
-    return { group: null, error: `Invalid invite code "${cleanCode}". Please check with your trip friend.` };
+    return { group: null, error: lookupErr || `Invalid invite code "${cleanCode}".` };
   }
 
+  const validUid = ensureValidUuid(userProfile.id);
+
   // Check if user is already a member
-  const alreadyMember = target.members.some((m) => m.userId === userProfile.id);
+  const alreadyMember = target.members.some(
+    (m) => m.userId === userProfile.id || m.userId === validUid
+  );
+
   if (!alreadyMember) {
     const newMember: TripMember = {
       id: `mem_${Date.now()}`,
       tripId: target.trip.id,
       userId: userProfile.id,
       role: 'member',
+      isOwner: false,
       joinedAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
       profile: userProfile,
@@ -903,6 +1224,10 @@ export const joinTripByInviteCode = async (
     };
     target.recentActivities.unshift(joinActivity);
 
+    const groups = getStoredGroups();
+    const gIdx = groups.findIndex((g) => g.trip.id === target.trip.id);
+    if (gIdx >= 0) groups[gIdx] = target;
+    else groups.unshift(target);
     saveStoredGroups(groups);
     saveTrip(target.trip);
 
@@ -912,8 +1237,9 @@ export const joinTripByInviteCode = async (
       try {
         await supabase.from('trip_members').upsert({
           trip_id: target.trip.id,
-          user_id: userProfile.id,
+          user_id: validUid,
           role: 'member',
+          is_owner: false,
         });
       } catch (err) {
         console.warn('Error syncing member to Supabase:', err);
@@ -930,7 +1256,7 @@ export const joinTripByInviteCode = async (
   return {
     group: {
       ...target,
-      myRole: target.createdBy === userProfile.id ? 'admin' : 'member',
+      myRole: target.createdBy === userProfile.id || target.createdBy === validUid ? 'admin' : 'member',
     },
     error: null,
   };
@@ -939,6 +1265,180 @@ export const joinTripByInviteCode = async (
 // ============================================================================
 // SQUAD MANAGEMENT OPERATIONS (Admin / Member Controls)
 // ============================================================================
+
+export interface AddMemberInput {
+  name: string;
+  emailOrPhone?: string;
+  avatarUrl?: string;
+  role?: MemberRole;
+  userId?: string;
+  bengaliName?: string;
+}
+
+/**
+ * Searches for users/friends to add to a squad, identifying if they are already members
+ */
+export const searchSquadCandidates = (
+  query: string,
+  currentMemberUserIds: string[]
+): Array<UserProfile & { isAlreadyMember: boolean }> => {
+  const clean = query.trim().toLowerCase();
+  const allProfiles = DEMO_PROFILES;
+
+  const matches = clean
+    ? allProfiles.filter(
+        (p) =>
+          p.displayName.toLowerCase().includes(clean) ||
+          (p.bengaliName && p.bengaliName.toLowerCase().includes(clean)) ||
+          (p.email && p.email.toLowerCase().includes(clean))
+      )
+    : allProfiles;
+
+  return matches.map((p) => ({
+    ...p,
+    isAlreadyMember: currentMemberUserIds.includes(p.id),
+  }));
+};
+
+// Add a member to the squad (Owner/Admin only)
+export const addMemberToSquad = async (
+  tripId: string,
+  input: AddMemberInput,
+  operatorUserId: string
+): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
+  let groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  // Permission check: Operator must be admin or createdBy
+  const operator = target.members.find((m) => m.userId === operatorUserId);
+  const isOperatorAdmin = operator?.role === 'admin' || target.createdBy === operatorUserId;
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner/admin can add members.' };
+  }
+
+  const cleanName = input.name.trim();
+  if (!cleanName) {
+    return { success: false, error: 'Member name cannot be empty.' };
+  }
+
+  // Check if existing profile matches by userId or email or displayName
+  let existingProfile: UserProfile | undefined = undefined;
+  if (input.userId) {
+    existingProfile = DEMO_PROFILES.find((p) => p.id === input.userId);
+  }
+  if (!existingProfile && input.emailOrPhone) {
+    existingProfile = DEMO_PROFILES.find(
+      (p) => p.email?.toLowerCase() === input.emailOrPhone?.trim().toLowerCase()
+    );
+  }
+  if (!existingProfile) {
+    existingProfile = DEMO_PROFILES.find(
+      (p) => p.displayName.toLowerCase() === cleanName.toLowerCase()
+    );
+  }
+
+  // Prevent duplicate member by userId or display name or email
+  const duplicate = target.members.some(
+    (m) =>
+      (existingProfile && m.userId === existingProfile.id) ||
+      (input.userId && m.userId === input.userId) ||
+      m.profile?.displayName.toLowerCase() === cleanName.toLowerCase() ||
+      (input.emailOrPhone &&
+        m.profile?.email &&
+        m.profile.email.toLowerCase() === input.emailOrPhone.trim().toLowerCase())
+  );
+  if (duplicate) {
+    return { success: false, error: 'Already a squad member' };
+  }
+
+  const newUserId = existingProfile
+    ? existingProfile.id
+    : input.userId || `user_member_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const avatar = input.avatarUrl || existingProfile?.avatarUrl || 'dhaki_drummer';
+
+  const now = new Date().toISOString();
+  const newProfile: UserProfile = existingProfile || {
+    id: newUserId,
+    displayName: cleanName,
+    bengaliName: input.bengaliName,
+    email: input.emailOrPhone?.trim() || `${cleanName.toLowerCase().replace(/\s+/g, '')}@pujatrip.app`,
+    avatarUrl: avatar,
+    isLocationSharingEnabled: true,
+    lastSeenAt: now,
+    isOnline: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const newMember: TripMember = {
+    id: `tm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    tripId: target.trip.id,
+    userId: newUserId,
+    role: input.role || 'member',
+    joinedAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    profile: newProfile,
+  };
+
+  target.members.push(newMember);
+
+  // Add activity log
+  const addActivity: GroupActivityEvent = {
+    id: `act_${Date.now()}`,
+    tripId: target.trip.id,
+    type: 'member_joined',
+    userId: newUserId,
+    userName: cleanName,
+    description: `${cleanName} joined the squad`,
+    bengaliDescription: `${cleanName} স্কোয়াডে যোগ দিয়েছেন`,
+    timestamp: now,
+  };
+  target.recentActivities.unshift(addActivity);
+
+  saveStoredGroups(groups);
+
+  // Sync to Supabase if configured
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('profiles').upsert({
+        id: newUserId,
+        display_name: cleanName,
+        avatar_url: avatar,
+        is_online: true,
+        created_at: now,
+        updated_at: now,
+      });
+
+      await supabase.from('trip_members').insert({
+        trip_id: tripId,
+        user_id: newUserId,
+        role: newMember.role,
+        joined_at: newMember.joinedAt,
+      });
+
+      await supabase.from('group_activity_log').insert({
+        trip_id: tripId,
+        type: 'member_joined',
+        user_id: newUserId,
+        description: `${cleanName} joined the squad`,
+        bengali_description: `${cleanName} স্কোয়াডে যোগ দিয়েছেন`,
+        created_at: now,
+      });
+    } catch (err) {
+      console.warn('Error syncing new member to Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'MEMBER_JOINED',
+    tripId,
+    member: newMember,
+  });
+
+  return { success: true, group: target };
+};
 
 // Remove a member from the squad (Owner/Admin only)
 export const removeMemberFromGroup = async (
@@ -961,9 +1461,18 @@ export const removeMemberFromGroup = async (
     return { success: false, error: 'You cannot remove yourself as admin. Use Leave Squad instead.' };
   }
 
+  // Owner protection: The squad owner/creator cannot be removed by anyone
+  if (memberUserId === target.createdBy) {
+    return { success: false, error: 'The squad owner cannot be removed.' };
+  }
+
   const memberToRemove = target.members.find((m) => m.userId === memberUserId);
   if (!memberToRemove) {
     return { success: false, error: 'Member not found in this squad.' };
+  }
+
+  if (memberToRemove.isOwner) {
+    return { success: false, error: 'The squad owner cannot be removed.' };
   }
 
   const memberName = memberToRemove.profile?.displayName || 'Member';
@@ -1584,12 +2093,26 @@ export const subscribeToTripUpdates = (
   if (supabase) {
     try {
       supabaseChannel = supabase
-        .channel(`trip_${tripId}`)
+        .channel(`trip_realtime_${tripId}`)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', filter: `trip_id=eq.${tripId}` },
+          { event: '*', schema: 'public', table: 'trip_join_requests', filter: `trip_id=eq.${tripId}` },
           (payload) => {
-            onUpdate({ type: 'SUPABASE_REALTIME', payload });
+            onUpdate({ type: 'JOIN_REQUEST_SYNC', payload });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${tripId}` },
+          (payload) => {
+            onUpdate({ type: 'MEMBER_SYNC', payload });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${tripId}` },
+          (payload) => {
+            onUpdate({ type: 'TRIP_SYNC', payload });
           }
         )
         .subscribe();
@@ -1606,4 +2129,958 @@ export const subscribeToTripUpdates = (
       supabase.removeChannel(supabaseChannel);
     }
   };
+};
+
+// ============================================================================
+// DAY-WISE PUJA PLANNING & SQUAD MANAGEMENT EXTENSIONS
+// ============================================================================
+
+export const ensureTripGroupState = (group: SharedTripGroup): SharedTripGroup => {
+  if (!group.days || group.days.length === 0) {
+    const tripDate = group.trip.date || '2026-10-18';
+    const festivalDay = durgaPuja2026Dates[tripDate] || durgaPuja2026Dates['2026-10-18'] || {
+      dayName: 'Maha Saptami',
+      bengaliDayName: 'মহা সপ্তমী',
+    };
+    const initialDay: TripDayPlan = {
+      id: `day_${group.trip.id}_1`,
+      tripId: group.trip.id,
+      date: tripDate,
+      festivalDayName: festivalDay.dayName,
+      bengaliFestivalDayName: festivalDay.bengaliDayName,
+      title: `${festivalDay.dayName} Hopping`,
+      bengaliTitle: `${festivalDay.bengaliDayName} পরিক্রমা`,
+      transportPreference: group.trip.preferredTransport || 'metro',
+      pandalIds: [...group.trip.selectedPandalIds],
+      sortOrder: 1,
+      notes: group.trip.notes,
+    };
+    group.days = [initialDay];
+    group.trip.days = [initialDay];
+  }
+
+  if (!group.settings) {
+    group.settings = {
+      joinApprovalMode: 'admin_approval',
+      visitPermissionMode: 'everyone',
+      selectedVisitMemberIds: [],
+      inviteToken: group.inviteToken || `sq_tok_${group.trip.city}_${group.inviteCode.toLowerCase()}`,
+      isInviteRevoked: false,
+    };
+  }
+  if (!group.joinRequests) {
+    group.joinRequests = [];
+  }
+  if (!group.sharedVisits) {
+    group.sharedVisits = getSharedPandalVisits(group.trip.id);
+  }
+  return group;
+};
+
+export const getPujaFestivalDays = () => {
+  return Object.values(durgaPuja2026Dates).map((d) => ({
+    dateStr: d.dateStr,
+    displayDate: d.displayDate,
+    dayName: d.dayName,
+    bengaliDayName: d.bengaliDayName,
+    description: d.description,
+    bengaliDescription: d.bengaliDescription,
+  }));
+};
+
+export const addDayToTrip = async (
+  tripId: string,
+  dayInput: Omit<TripDayPlan, 'id' | 'tripId'>,
+  operatorUserId: string
+): Promise<{ success: boolean; day?: TripDayPlan; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can add trip days.' };
+
+  ensureTripGroupState(target);
+
+  const newDayId = `day_${tripId}_${Date.now()}`;
+  const newDay: TripDayPlan = {
+    ...dayInput,
+    id: newDayId,
+    tripId,
+    sortOrder: (target.days?.length || 0) + 1,
+  };
+
+  target.days = [...(target.days || []), newDay];
+  target.trip.days = target.days;
+
+  // Add any new pandals to trip.selectedPandalIds
+  const updatedPandalIds = Array.from(new Set([...target.trip.selectedPandalIds, ...newDay.pandalIds]));
+  target.trip.selectedPandalIds = updatedPandalIds;
+
+  const now = new Date().toISOString();
+  const user = getCurrentUserProfile();
+  target.recentActivities.unshift({
+    id: `act_${Date.now()}`,
+    tripId,
+    type: 'pandal_added',
+    userId: operatorUserId,
+    userName: user.displayName,
+    description: `${user.displayName} added ${newDay.festivalDayName} (${newDay.bengaliFestivalDayName}) to the trip plan`,
+    bengaliDescription: `${user.displayName} ট্রিপে ${newDay.bengaliFestivalDayName} যুক্ত করেছেন`,
+    timestamp: now,
+  });
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    day: newDay,
+  });
+
+  return { success: true, day: newDay };
+};
+
+export const removeDayFromTrip = async (
+  tripId: string,
+  dayId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can delete days.' };
+
+  ensureTripGroupState(target);
+
+  if ((target.days?.length || 0) <= 1) {
+    return { success: false, error: 'Cannot remove the only day in the trip plan.' };
+  }
+
+  target.days = target.days?.filter((d) => d.id !== dayId) || [];
+  target.trip.days = target.days;
+
+  // Re-sync trip.selectedPandalIds
+  const allDayPandalIds = Array.from(new Set(target.days.flatMap((d) => d.pandalIds)));
+  target.trip.selectedPandalIds = allDayPandalIds;
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+  });
+
+  return { success: true };
+};
+
+export const updateTripDay = async (
+  tripId: string,
+  dayId: string,
+  updates: Partial<TripDayPlan>,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can update day plans.' };
+
+  ensureTripGroupState(target);
+
+  const day = target.days?.find((d) => d.id === dayId);
+  if (!day) return { success: false, error: 'Trip day not found' };
+
+  Object.assign(day, updates);
+  target.trip.days = target.days;
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    dayId,
+  });
+
+  return { success: true };
+};
+
+export const addPandalToDay = async (
+  tripId: string,
+  dayId: string,
+  pandalId: string,
+  pandalName: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can add pandals.' };
+
+  ensureTripGroupState(target);
+
+  const day = target.days?.find((d) => d.id === dayId);
+  if (!day) return { success: false, error: 'Trip day not found' };
+
+  if (day.pandalIds.includes(pandalId)) {
+    return { success: false, error: 'This pandal is already added to this day.' };
+  }
+
+  day.pandalIds.push(pandalId);
+  if (!target.trip.selectedPandalIds.includes(pandalId)) {
+    target.trip.selectedPandalIds.push(pandalId);
+  }
+
+  const user = getCurrentUserProfile();
+  target.recentActivities.unshift({
+    id: `act_${Date.now()}`,
+    tripId,
+    type: 'pandal_added',
+    userId: operatorUserId,
+    userName: user.displayName,
+    description: `${user.displayName} added ${pandalName} to ${day.bengaliFestivalDayName}`,
+    bengaliDescription: `${user.displayName} ${day.bengaliFestivalDayName}-তে ${pandalName} যুক্ত করেছেন`,
+    pandalId,
+    pandalName,
+    timestamp: new Date().toISOString(),
+  });
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    dayId,
+    pandalId,
+  });
+
+  return { success: true };
+};
+
+export const removePandalFromDay = async (
+  tripId: string,
+  dayId: string,
+  pandalId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can remove pandals.' };
+
+  ensureTripGroupState(target);
+
+  const day = target.days?.find((d) => d.id === dayId);
+  if (!day) return { success: false, error: 'Trip day not found' };
+
+  day.pandalIds = day.pandalIds.filter((id) => id !== pandalId);
+
+  // Update trip.selectedPandalIds (union of all days)
+  const allDayPandalIds = Array.from(new Set(target.days?.flatMap((d) => d.pandalIds) || []));
+  target.trip.selectedPandalIds = allDayPandalIds;
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    dayId,
+  });
+
+  return { success: true };
+};
+
+export const reorderDayPandals = async (
+  tripId: string,
+  dayId: string,
+  newPandalIds: string[],
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can reorder pandals.' };
+
+  ensureTripGroupState(target);
+
+  const day = target.days?.find((d) => d.id === dayId);
+  if (!day) return { success: false, error: 'Trip day not found' };
+
+  day.pandalIds = newPandalIds;
+
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    dayId,
+    pandalIds: newPandalIds,
+  });
+
+  return { success: true };
+};
+
+export const optimizeDayPandalOrder = async (
+  tripId: string,
+  dayId: string,
+  allPandals: Pandal[],
+  operatorUserId: string
+): Promise<{ success: boolean; newOrder?: string[]; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can optimize route order.' };
+
+  ensureTripGroupState(target);
+  const day = target.days?.find((d) => d.id === dayId);
+  if (!day || day.pandalIds.length <= 2) {
+    return { success: true, newOrder: day?.pandalIds };
+  }
+
+  // Nearest-neighbor sequencing starting from current first pandal
+  const dayPandalObjects = day.pandalIds
+    .map((id) => allPandals.find((p) => p.id === id))
+    .filter(Boolean) as Pandal[];
+
+  if (dayPandalObjects.length <= 2) {
+    return { success: true, newOrder: day.pandalIds };
+  }
+
+  const optimizedIds: string[] = [dayPandalObjects[0].id];
+  const remaining = dayPandalObjects.slice(1);
+
+  while (remaining.length > 0) {
+    const lastId = optimizedIds[optimizedIds.length - 1];
+    const lastPandal = allPandals.find((p) => p.id === lastId);
+    if (!lastPandal) break;
+
+    let nearestIdx = 0;
+    let shortestDist = Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const dist = calculateDistanceKm(
+        lastPandal.latitude,
+        lastPandal.longitude,
+        remaining[i].latitude,
+        remaining[i].longitude
+      );
+      if (dist < shortestDist) {
+        shortestDist = dist;
+        nearestIdx = i;
+      }
+    }
+
+    optimizedIds.push(remaining[nearestIdx].id);
+    remaining.splice(nearestIdx, 1);
+  }
+
+  day.pandalIds = optimizedIds;
+  saveStoredGroups(groups);
+  saveTrip(target.trip);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'DAY_UPDATED',
+    tripId,
+    dayId,
+    pandalIds: optimizedIds,
+  });
+
+  return { success: true, newOrder: optimizedIds };
+};
+
+// ============================================================================
+// SHARED VISIT STATUS & VISIT CORRECTIONS
+// ============================================================================
+
+export const getSharedPandalVisits = (tripId: string): Record<string, SharedPandalVisitEvent> => {
+  try {
+    const raw = localStorage.getItem(`pujatrip_shared_visits_${tripId}`);
+    if (raw) return JSON.parse(raw);
+  } catch (err) {
+    console.warn('Error reading shared visits:', err);
+  }
+  return {};
+};
+
+export const saveSharedPandalVisits = (
+  tripId: string,
+  visits: Record<string, SharedPandalVisitEvent>
+): void => {
+  try {
+    localStorage.setItem(`pujatrip_shared_visits_${tripId}`, JSON.stringify(visits));
+  } catch (err) {
+    console.warn('Error saving shared visits:', err);
+  }
+};
+
+export const canUserMarkVisited = (group: SharedTripGroup, userId: string): boolean => {
+  const mode = group.settings?.visitPermissionMode || 'everyone';
+  if (mode === 'everyone') return true;
+  const isOperatorAdmin =
+    group.createdBy === userId || group.members.some((m) => m.userId === userId && m.role === 'admin');
+  if (mode === 'admins_only') return isOperatorAdmin;
+  if (mode === 'selected_members') {
+    if (isOperatorAdmin) return true;
+    return Boolean(group.settings?.selectedVisitMemberIds?.includes(userId));
+  }
+  return true;
+};
+
+export const markSharedPandalVisit = async (
+  tripId: string,
+  dayId: string | undefined,
+  pandalId: string,
+  pandalName: string,
+  user: UserProfile,
+  locationNote?: string
+): Promise<{ success: boolean; event?: SharedPandalVisitEvent; error?: string }> => {
+  const group = getTripGroup(tripId);
+  if (!group) return { success: false, error: 'Squad not found' };
+
+  if (!canUserMarkVisited(group, user.id)) {
+    return {
+      success: false,
+      error: 'You do not have permission to mark pandals as visited in this squad.',
+    };
+  }
+
+  const visits = getSharedPandalVisits(tripId);
+  const now = new Date().toISOString();
+
+  // Prevent duplicate visit clicks
+  if (visits[pandalId] && visits[pandalId].status === 'visited') {
+    return { success: false, error: `Already marked as visited by ${visits[pandalId].markedByUserName}` };
+  }
+
+  const visitEvent: SharedPandalVisitEvent = {
+    id: `vis_event_${Date.now()}`,
+    tripId,
+    dayId,
+    pandalId,
+    pandalName,
+    markedByUserId: user.id,
+    markedByUserName: user.displayName,
+    markedByUserAvatar: user.avatarUrl,
+    markedAt: now,
+    status: 'visited',
+    locationNote,
+  };
+
+  visits[pandalId] = visitEvent;
+  saveSharedPandalVisits(tripId, visits);
+
+  // Sync to legacy per-user visit array for backwards compatibility
+  await markGroupPandalDarshan(tripId, pandalId, pandalName, user.id, true);
+
+  // Sync group
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (target) {
+    if (!target.sharedVisits) target.sharedVisits = {};
+    target.sharedVisits[pandalId] = visitEvent;
+    target.recentActivities.unshift({
+      id: `act_${Date.now()}`,
+      tripId,
+      type: 'darshan_completed',
+      userId: user.id,
+      userName: user.displayName,
+      description: `${user.displayName} marked Darshan completed at ${pandalName}`,
+      bengaliDescription: `${user.displayName} ${pandalName}-এ দর্শন সম্পন্ন করেছেন`,
+      pandalId,
+      pandalName,
+      timestamp: now,
+    });
+    saveStoredGroups(groups);
+  }
+
+  // Supabase sync
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('visit_status').upsert({
+        trip_id: tripId,
+        pandal_id: pandalId,
+        user_id: user.id,
+        is_visited: true,
+        visited_at: now,
+      });
+    } catch (err) {
+      console.warn('Supabase visit sync error:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'SHARED_VISIT_MARKED',
+    tripId,
+    pandalId,
+    event: visitEvent,
+  });
+
+  return { success: true, event: visitEvent };
+};
+
+export const undoSharedPandalVisit = async (
+  tripId: string,
+  dayId: string | undefined,
+  pandalId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const group = getTripGroup(tripId);
+  if (!group) return { success: false, error: 'Squad not found' };
+
+  const visits = getSharedPandalVisits(tripId);
+  const existing = visits[pandalId];
+  if (!existing) return { success: false, error: 'No visit record found to undo' };
+
+  const isOperatorAdmin =
+    group.createdBy === operatorUserId ||
+    group.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  const isOriginalMarker = existing.markedByUserId === operatorUserId;
+
+  if (!isOperatorAdmin && !isOriginalMarker) {
+    return { success: false, error: 'Only admins or the member who marked this visit can undo it.' };
+  }
+
+  delete visits[pandalId];
+  saveSharedPandalVisits(tripId, visits);
+
+  // Sync to legacy visit status
+  await markGroupPandalDarshan(tripId, pandalId, existing.pandalName, existing.markedByUserId, false);
+
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (target) {
+    if (target.sharedVisits) {
+      delete target.sharedVisits[pandalId];
+    }
+    const user = getCurrentUserProfile();
+    target.recentActivities.unshift({
+      id: `act_${Date.now()}`,
+      tripId,
+      type: 'pandal_removed',
+      userId: operatorUserId,
+      userName: user.displayName,
+      description: `${user.displayName} corrected and removed visit record for ${existing.pandalName}`,
+      bengaliDescription: `${user.displayName} ${existing.pandalName}-এর দর্শন রেকর্ড সংশোধন করেছেন`,
+      pandalId,
+      pandalName: existing.pandalName,
+      timestamp: new Date().toISOString(),
+    });
+    saveStoredGroups(groups);
+  }
+
+  // Supabase delete
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('visit_status').delete().match({ trip_id: tripId, pandal_id: pandalId });
+    } catch (err) {
+      console.warn('Supabase visit undo error:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'SHARED_VISIT_UNDONE',
+    tripId,
+    pandalId,
+  });
+
+  return { success: true };
+};
+
+export const getVisitHistory = (tripId: string): SharedPandalVisitEvent[] => {
+  const visits = getSharedPandalVisits(tripId);
+  return Object.values(visits).sort(
+    (a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()
+  );
+};
+
+// ============================================================================
+// SQUAD INVITE SYSTEM & ADMIN APPROVAL
+// ============================================================================
+
+export const requestToJoinSquad = async (
+  inviteCodeOrToken: string,
+  user: UserProfile
+): Promise<{
+  success: boolean;
+  status: 'joined' | 'request_pending' | 'already_member' | 'revoked';
+  group?: SharedTripGroup;
+  error?: string;
+}> => {
+  const clean = inviteCodeOrToken.trim().toUpperCase();
+  if (!clean) {
+    return { success: false, status: 'request_pending', error: 'Please enter a valid squad invite code.' };
+  }
+
+  // 1. Fetch squad from Supabase or local cache
+  const { group: target, error: lookupErr } = await fetchSquadByInviteCode(clean);
+
+  if (!target) {
+    return {
+      success: false,
+      status: 'request_pending',
+      error: lookupErr || `Invalid or expired squad invite code "${clean}".`,
+    };
+  }
+
+  ensureTripGroupState(target);
+
+  if (target.settings?.isInviteRevoked) {
+    return {
+      success: false,
+      status: 'revoked',
+      error: 'This squad invite link has been revoked by the squad admin.',
+    };
+  }
+
+  const validUid = ensureValidUuid(user.id);
+
+  // 2. Check if user is already an active member or owner
+  const isOwner = target.createdBy === user.id || target.createdBy === validUid;
+  const isMember = target.members.some((m) => m.userId === user.id || m.userId === validUid);
+
+  if (isOwner || isMember) {
+    return { success: true, status: 'already_member', group: target };
+  }
+
+  // 3. Check if user already submitted a pending request
+  if (!target.joinRequests) target.joinRequests = [];
+  const existingPending = target.joinRequests.find(
+    (r) => (r.userId === user.id || r.userId === validUid) && r.status === 'pending'
+  );
+  if (existingPending) {
+    return { success: true, status: 'request_pending', group: target };
+  }
+
+  // 4. Check approval mode
+  const approvalMode = target.settings?.joinApprovalMode || 'admin_approval';
+
+  if (approvalMode === 'open_with_link') {
+    // Instant direct join!
+    const res = await joinTripByInviteCode(target.inviteCode, user);
+    return {
+      success: Boolean(res.group),
+      status: 'joined',
+      group: res.group || undefined,
+      error: res.error || undefined,
+    };
+  }
+
+  // 5. Admin approval required: Create real join request
+  const requestId = generateCleanUuid();
+  const newRequest: SquadJoinRequest = {
+    id: requestId,
+    tripId: target.trip.id,
+    userId: user.id,
+    userName: user.displayName,
+    userEmail: user.email,
+    userAvatar: user.avatarUrl,
+    bengaliName: user.bengaliName,
+    requestedAt: new Date().toISOString(),
+    status: 'pending',
+  };
+
+  target.joinRequests.unshift(newRequest);
+
+  const allGroups = getStoredGroups();
+  const gIdx = allGroups.findIndex((g) => g.trip.id === target.trip.id);
+  if (gIdx >= 0) allGroups[gIdx] = target;
+  else allGroups.unshift(target);
+  saveStoredGroups(allGroups);
+
+  // Sync join request to Supabase
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('trip_join_requests').upsert({
+        id: requestId,
+        trip_id: target.trip.id,
+        user_id: validUid,
+        user_name: user.displayName,
+        user_avatar: user.avatarUrl,
+        status: 'pending',
+        requested_at: newRequest.requestedAt,
+      });
+    } catch (err) {
+      console.warn('Error saving join request to Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'JOIN_REQUEST_UPDATED',
+    tripId: target.trip.id,
+    request: newRequest,
+  });
+
+  return { success: true, status: 'request_pending', group: target };
+};
+
+export const approveJoinRequest = async (
+  tripId: string,
+  requestId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const validOpId = ensureValidUuid(operatorUserId);
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.createdBy === validOpId ||
+    target.members.some((m) => (m.userId === operatorUserId || m.userId === validOpId) && m.role === 'admin');
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner or admin can approve join requests.' };
+  }
+
+  const req = target.joinRequests?.find((r) => r.id === requestId);
+  if (!req) return { success: false, error: 'Join request not found' };
+
+  req.status = 'accepted';
+
+  // Add member
+  const addRes = await addMemberToSquad(
+    tripId,
+    {
+      userId: req.userId,
+      name: req.userName,
+      bengaliName: req.bengaliName,
+      emailOrPhone: req.userEmail,
+      avatarUrl: req.userAvatar,
+      role: 'member',
+    },
+    operatorUserId
+  );
+
+  const updatedGroup = addRes.group || target;
+
+  saveStoredGroups(groups);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('trip_join_requests').update({ status: 'accepted' }).eq('id', requestId);
+      await supabase.from('trip_members').upsert({
+        trip_id: tripId,
+        user_id: ensureValidUuid(req.userId),
+        role: 'member',
+        is_owner: false,
+      });
+    } catch (err) {
+      console.warn('Error updating join request in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'JOIN_REQUEST_ACCEPTED',
+    tripId,
+    requestId,
+    userId: req.userId,
+  });
+
+  return { success: true, group: updatedGroup };
+};
+
+export const rejectJoinRequest = async (
+  tripId: string,
+  requestId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const validOpId = ensureValidUuid(operatorUserId);
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.createdBy === validOpId ||
+    target.members.some((m) => (m.userId === operatorUserId || m.userId === validOpId) && m.role === 'admin');
+  if (!isOperatorAdmin) {
+    return { success: false, error: 'Only squad owner or admin can reject join requests.' };
+  }
+
+  const req = target.joinRequests?.find((r) => r.id === requestId);
+  if (req) {
+    req.status = 'rejected';
+  }
+  saveStoredGroups(groups);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('trip_join_requests').update({ status: 'rejected' }).eq('id', requestId);
+    } catch (err) {
+      console.warn('Error updating join request in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'JOIN_REQUEST_REJECTED',
+    tripId,
+    requestId,
+  });
+
+  return { success: true };
+};
+
+
+export const regenerateSquadInviteToken = async (
+  tripId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; inviteCode?: string; inviteToken?: string; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can regenerate invite links.' };
+
+  const newCode = generateInviteCode(target.trip.city);
+  const newToken = `sq_tok_${target.trip.city}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .substring(2, 7)}`;
+
+  target.inviteCode = newCode;
+  target.inviteToken = newToken;
+  if (!target.settings) {
+    target.settings = {
+      joinApprovalMode: 'admin_approval',
+      visitPermissionMode: 'everyone',
+      selectedVisitMemberIds: [],
+      inviteToken: newToken,
+      isInviteRevoked: false,
+    };
+  } else {
+    target.settings.inviteToken = newToken;
+    target.settings.isInviteRevoked = false;
+  }
+
+  saveStoredGroups(groups);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from('trips').update({ invite_code: newCode }).eq('id', tripId);
+    } catch (err) {
+      console.warn('Error updating invite code in Supabase:', err);
+    }
+  }
+
+  groupBroadcastChannel?.postMessage({
+    type: 'INVITE_REGENERATED',
+    tripId,
+    newCode,
+    newToken,
+  });
+
+  return { success: true, inviteCode: newCode, inviteToken: newToken };
+};
+
+export const revokeSquadInviteToken = async (
+  tripId: string,
+  operatorUserId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can revoke invite links.' };
+
+  if (!target.settings) {
+    target.settings = {
+      joinApprovalMode: 'admin_approval',
+      visitPermissionMode: 'everyone',
+      selectedVisitMemberIds: [],
+      isInviteRevoked: true,
+    };
+  } else {
+    target.settings.isInviteRevoked = true;
+  }
+
+  saveStoredGroups(groups);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'INVITE_REVOKED',
+    tripId,
+  });
+
+  return { success: true };
+};
+
+export const updateSquadSettings = async (
+  tripId: string,
+  updates: Partial<SquadSettings>,
+  operatorUserId: string
+): Promise<{ success: boolean; settings?: SquadSettings; error?: string }> => {
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId);
+  if (!target) return { success: false, error: 'Squad not found' };
+
+  const isOperatorAdmin =
+    target.createdBy === operatorUserId ||
+    target.members.some((m) => m.userId === operatorUserId && m.role === 'admin');
+  if (!isOperatorAdmin) return { success: false, error: 'Only squad owner or admin can update settings.' };
+
+  ensureTripGroupState(target);
+
+  target.settings = {
+    ...target.settings!,
+    ...updates,
+  };
+
+  saveStoredGroups(groups);
+
+  groupBroadcastChannel?.postMessage({
+    type: 'SETTINGS_UPDATED',
+    tripId,
+    settings: target.settings,
+  });
+
+  return { success: true, settings: target.settings };
+};
+
+export const generateWhatsAppInviteMessage = (group: SharedTripGroup): string => {
+  const baseUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : 'https://pujatrip.app';
+  const joinUrl = `${baseUrl}?invite=${group.inviteCode}`;
+  return `🪔 PujaTrip Squad Invitation\n\nYou have been invited to join:\n[${group.trip.name}]\n\n📍 ${group.trip.city.toUpperCase()}\n\nJoin the squad:\n${joinUrl}\n\nLet's explore Puja together! 🌺`;
 };

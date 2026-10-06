@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS public.trips (
   max_walking_distance_meters INTEGER DEFAULT 5000,
   invite_code VARCHAR(10) UNIQUE NOT NULL,
   notes TEXT,
+  description TEXT,
+  emblem TEXT DEFAULT 'dhunuchi_dancer',
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -45,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.trip_members (
   trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+  is_owner BOOLEAN NOT NULL DEFAULT false,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_active_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT unique_trip_user UNIQUE (trip_id, user_id)
@@ -139,6 +142,28 @@ CREATE TABLE IF NOT EXISTS public.group_activity_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 10. COMMUNITY PANDALS (User-created custom neighborhood and community pandals)
+CREATE TABLE IF NOT EXISTS public.community_pandals (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  bengali_name TEXT,
+  address TEXT NOT NULL,
+  area TEXT,
+  city TEXT NOT NULL DEFAULT 'kolkata' CHECK (city IN ('kolkata', 'contai')),
+  zone TEXT,
+  description TEXT,
+  theme TEXT,
+  tags JSONB NOT NULL DEFAULT '["Community", "Traditional"]'::jsonb,
+  image_url TEXT NOT NULL DEFAULT '/assets/share/durga-devi.png',
+  latitude NUMERIC(10, 7),
+  longitude NUMERIC(10, 7),
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  creator_name TEXT,
+  is_user_created BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- -------------------------------------------------------------
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- -------------------------------------------------------------
@@ -151,6 +176,17 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crowd_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.live_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.group_activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.community_pandals ENABLE ROW LEVEL SECURITY;
+
+-- Community Pandals Policies:
+-- Anyone can view community pandals
+CREATE POLICY "Community pandals viewable by everyone" ON public.community_pandals FOR SELECT USING (true);
+-- Authenticated users can insert their own custom pandals
+CREATE POLICY "Authenticated users can create community pandals" ON public.community_pandals FOR INSERT WITH CHECK (auth.uid() = created_by OR created_by IS NOT NULL);
+-- Only the creator can update their own pandal
+CREATE POLICY "Creators can update their own community pandal" ON public.community_pandals FOR UPDATE USING (auth.uid() = created_by);
+-- Only the creator can delete their own pandal
+CREATE POLICY "Creators can delete their own community pandal" ON public.community_pandals FOR DELETE USING (auth.uid() = created_by);
 
 -- Allow authenticated users to view all profiles and update their own profile
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
@@ -173,11 +209,17 @@ CREATE POLICY "Admins can delete trips" ON public.trips FOR DELETE USING (
 
 -- Trip Members:
 CREATE POLICY "Members viewable by anyone in same trip" ON public.trip_members FOR SELECT USING (true);
-CREATE POLICY "Users can join trips" ON public.trip_members FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Members or admins can update status" ON public.trip_members FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Admins can remove members or user can leave" ON public.trip_members FOR DELETE USING (
+CREATE POLICY "Admins can add members or users can join" ON public.trip_members FOR INSERT WITH CHECK (
   auth.uid() = user_id OR EXISTS (
     SELECT 1 FROM public.trip_members tm WHERE tm.trip_id = public.trip_members.trip_id AND tm.user_id = auth.uid() AND tm.role = 'admin'
+  )
+);
+CREATE POLICY "Members or admins can update status" ON public.trip_members FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Admins can remove non-owner members or member can leave" ON public.trip_members FOR DELETE USING (
+  public.trip_members.is_owner = false AND (
+    auth.uid() = user_id OR EXISTS (
+      SELECT 1 FROM public.trip_members tm WHERE tm.trip_id = public.trip_members.trip_id AND tm.user_id = auth.uid() AND tm.role = 'admin'
+    )
   )
 );
 
@@ -221,3 +263,85 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.crowd_reports;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.live_locations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.group_activity_log;
+
+-- 11. TRIP JOIN REQUESTS (For Admin Approval Flow)
+CREATE TABLE IF NOT EXISTS public.trip_join_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_avatar TEXT DEFAULT 'dhunuchi_dancer',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT unique_trip_join_request UNIQUE (trip_id, user_id)
+);
+
+ALTER TABLE public.trip_join_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Trip join requests viewable by trip admins and requester" ON public.trip_join_requests
+  FOR SELECT USING (
+    auth.uid() = user_id OR EXISTS (
+      SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_join_requests.trip_id AND user_id = auth.uid() AND role = 'admin'
+    )
+  );
+CREATE POLICY "Users can create join requests" ON public.trip_join_requests
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Admins can update join requests" ON public.trip_join_requests
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_join_requests.trip_id AND user_id = auth.uid() AND role = 'admin'
+    )
+  );
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.trip_join_requests;
+
+-- 12. TRIP DAYS (Day-wise festival planning e.g. Maha Saptami, Maha Ashtami)
+CREATE TABLE IF NOT EXISTS public.trip_days (
+  id TEXT PRIMARY KEY,
+  trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  festival_day_name TEXT NOT NULL,
+  bengali_festival_day_name TEXT NOT NULL,
+  title TEXT,
+  bengali_title TEXT,
+  transport_preference TEXT NOT NULL DEFAULT 'mixed' CHECK (transport_preference IN ('walking', 'metro', 'bus', 'mixed')),
+  sort_order INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  start_time TIME DEFAULT '17:00',
+  end_time TIME DEFAULT '23:00',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.trip_days ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Trip days viewable by members" ON public.trip_days FOR SELECT USING (true);
+CREATE POLICY "Trip days manageable by squad members" ON public.trip_days FOR ALL USING (
+  EXISTS (SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_days.trip_id AND user_id = auth.uid())
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.trip_days;
+
+-- 13. TRIP DAY PANDALS (Ordered stops within a specific festival day)
+CREATE TABLE IF NOT EXISTS public.trip_day_pandals (
+  id TEXT PRIMARY KEY DEFAULT ('p_' || gen_random_uuid()),
+  trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  trip_day_id TEXT NOT NULL REFERENCES public.trip_days(id) ON DELETE CASCADE,
+  pandal_id TEXT NOT NULL,
+  stop_order INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'visited', 'skipped')),
+  is_visited BOOLEAN NOT NULL DEFAULT false,
+  visited_at TIMESTAMPTZ,
+  visited_by_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  custom_notes TEXT,
+  added_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT unique_trip_day_pandal UNIQUE (trip_day_id, pandal_id)
+);
+
+ALTER TABLE public.trip_day_pandals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Trip day pandals viewable by members" ON public.trip_day_pandals FOR SELECT USING (true);
+CREATE POLICY "Trip day pandals manageable by squad members" ON public.trip_day_pandals FOR ALL USING (
+  EXISTS (SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_day_pandals.trip_id AND user_id = auth.uid())
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.trip_day_pandals;
+

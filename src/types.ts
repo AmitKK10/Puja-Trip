@@ -34,11 +34,12 @@ export type WeatherCondition =
   | 'thunderstorm';
 
 export interface WeatherForecastSlot {
-  timeOffsetMinutes: number; // 0, 30, 60, 90, 120
+  timeOffsetMinutes: number; // 0, 30, 60, 90, 120...
   forecastTime: string; // e.g. "07:30 PM"
   temperatureC: number;
   feelsLikeC: number;
   rainProbability: number; // 0-100%
+  rainAmountMm?: number; // expected precipitation amount in mm
   condition: WeatherCondition;
   conditionLabel: string;
   bengaliConditionLabel: string;
@@ -56,6 +57,8 @@ export interface SevereWeatherAlert {
   effectiveFrom: string;
   effectiveUntil: string;
   affectedZones: string[];
+  source?: string;
+  issuedAt?: string;
 }
 
 export interface LocationWeather {
@@ -65,8 +68,10 @@ export interface LocationWeather {
   city: CityId;
   currentTempC: number;
   feelsLikeTempC: number;
-  humidityPercent: number;
-  rainProbability: number;
+  humidityPercent?: number; // Real observed humidity
+  rainProbability: number; // Real forecast probability from provider
+  expectedRainfallMm?: number; // Expected precipitation in mm
+  cloudCoverPercent?: number;
   weatherCondition: WeatherCondition;
   conditionLabel: string;
   bengaliConditionLabel: string;
@@ -76,8 +81,21 @@ export interface LocationWeather {
   shortTermForecast: WeatherForecastSlot[];
   severeAlert?: SevereWeatherAlert;
   isDemoData: boolean;
-  lastUpdated: string;
-  status: 'live_demo' | 'cached' | 'unavailable';
+  lastUpdated: string; // ISO string
+  observedAt?: string; // IST string e.g. "2:30 PM"
+  fetchedAt?: string; // ISO string
+  timezone?: string; // "Asia/Kolkata"
+  source: string; // e.g. "Open-Meteo & IMD RMC Kolkata"
+  sourceType: 'official_imd' | 'weather_api' | 'cached' | 'unavailable';
+  status: 'live' | 'cached' | 'stale' | 'live_demo' | 'unavailable';
+  isStale?: boolean;
+  radarStatus?: {
+    isAvailable: boolean;
+    state: 'no_rain_nearby' | 'rain_nearby' | 'rain_approaching' | 'heavy_precipitation_nearby' | 'unavailable';
+    label: string;
+    bengaliLabel: string;
+    externalRadarUrl?: string;
+  };
 }
 
 export interface RainGearItem {
@@ -291,6 +309,13 @@ export interface Pandal {
     dhunuchiAarti: string;
     bhogDistribution: string;
   };
+
+  // User-created community pandal fields
+  isUserCreated?: boolean;
+  createdBy?: string;
+  creatorName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TripStop {
@@ -445,6 +470,10 @@ export interface ModeRouteOption {
   timeSavedVersusWalkMinutes?: number;
   exceedsMaxWalkingLimit: boolean;
   comfortTag: string; // e.g. "Fastest", "Eco-friendly", "Direct Walk", "Air Conditioned", "Zero Fatigue"
+  operationalType?: 'live' | 'scheduled' | 'estimated' | 'user_reported';
+  operationalStatusLabel?: string; // e.g. "Scheduled timetable (Live tracking unavailable)"
+  verifiedSource?: string; // e.g. "Kolkata Metro Official Schedule (Timetable data)"
+  fareRupees?: number;
   breakdown: RouteOptionBreakdown;
   steps: RouteStep[];
 }
@@ -538,6 +567,7 @@ export interface RouteCalculationOptions {
   city?: CityId;
   crowdLevel?: CrowdLevel;
   currentGpsPosition?: { latitude: number; longitude: number };
+  weather?: LocationWeather;
 }
 
 export interface TripLocation {
@@ -569,6 +599,66 @@ export interface TripPlan {
   createdAt: string;
   updatedAt: string;
   notes?: string;
+  description?: string;
+  emblem?: string;
+  days?: TripDayPlan[];
+}
+
+export interface TripDayPlan {
+  id: string; // e.g. "day_saptami_1712..."
+  tripId: string;
+  date: string; // '2026-10-18'
+  festivalDayName: string; // 'Maha Saptami'
+  bengaliFestivalDayName: string; // 'মহা সপ্তমী'
+  title?: string; // Optional custom day title e.g. "North Kolkata Heritage Walk"
+  bengaliTitle?: string;
+  transportPreference: TransportPreference;
+  pandalIds: string[]; // Ordered list of pandal IDs for this specific day
+  sortOrder: number;
+  notes?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface SquadJoinRequest {
+  id: string;
+  tripId: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userAvatar?: string;
+  bengaliName?: string;
+  requestedAt: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+export type SquadJoinApprovalMode = 'admin_approval' | 'open_with_link';
+export type SquadVisitPermissionMode = 'everyone' | 'admins_only' | 'selected_members';
+
+export interface SquadSettings {
+  joinApprovalMode: SquadJoinApprovalMode;
+  visitPermissionMode: SquadVisitPermissionMode;
+  selectedVisitMemberIds?: string[]; // userIds who are permitted when mode === 'selected_members'
+  inviteToken?: string; // secure token
+  isInviteRevoked?: boolean;
+}
+
+export interface SharedPandalVisitEvent {
+  id: string;
+  tripId: string;
+  dayId?: string;
+  pandalId: string;
+  pandalName: string;
+  markedByUserId: string;
+  markedByUserName: string;
+  markedByUserAvatar?: string;
+  markedAt: string;
+  status: 'visited' | 'skipped' | 'cancelled';
+  locationNote?: string;
+  userLocation?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 export interface ItineraryStop {
@@ -659,6 +749,7 @@ export interface TripMember {
   tripId: string;
   userId: string;
   role: MemberRole;
+  isOwner?: boolean;
   joinedAt: string;
   lastActiveAt: string;
   profile?: UserProfile;
@@ -1047,11 +1138,16 @@ export interface GroupActivityEvent {
 export interface SharedTripGroup {
   trip: TripPlan;
   inviteCode: string; // 6-character unique code e.g. "KP26X7"
+  inviteToken?: string; // Secure link token e.g. "sq_tok_abc123..."
   createdBy: string; // Admin User ID
   members: TripMember[];
   myRole: MemberRole;
   isSupabaseSynced: boolean;
   recentActivities: GroupActivityEvent[];
+  days?: TripDayPlan[];
+  settings?: SquadSettings;
+  joinRequests?: SquadJoinRequest[];
+  sharedVisits?: Record<string, SharedPandalVisitEvent>;
 }
 
 // -------------------------------------------------------------

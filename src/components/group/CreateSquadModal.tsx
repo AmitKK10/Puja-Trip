@@ -8,7 +8,7 @@ import {
   TripPlan,
   TransportPreference,
 } from '../../types';
-import { createSharedTripGroup } from '../../services/friendGroupService';
+import { createSharedTripGroup, FESTIVE_AVATARS } from '../../services/friendGroupService';
 import { getSavedTrips } from '../../services/tripStorageService';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import confetti from 'canvas-confetti';
@@ -53,6 +53,8 @@ export const CreateSquadModal: React.FC<CreateSquadModalProps> = ({
   const [bengaliName, setBengaliName] = useState(
     activeCity === 'kolkata' ? 'কলকাতা শারদ পরিক্রমা দল' : 'কাঁথি শারদ অঞ্জলি স্কোয়াড'
   );
+  const [squadDescription, setSquadDescription] = useState('');
+  const [squadAvatar, setSquadAvatar] = useState('dhunuchi_dancer');
   const [city, setCity] = useState<CityId>(activeCity);
   const [transport, setTransport] = useState<TransportPreference>('metro');
   const [date, setDate] = useState('2026-10-18'); // Maha Saptami 2026
@@ -118,10 +120,10 @@ export const CreateSquadModal: React.FC<CreateSquadModalProps> = ({
       return;
     }
 
-    if (selectedPandalIds.length === 0) {
-      setErrorMsg('Please select at least one pandal for your squad route.');
-      return;
-    }
+    const finalPandalIds =
+      selectedPandalIds.length > 0
+        ? selectedPandalIds
+        : cityPandals.slice(0, 3).map((p) => p.id);
 
     setIsSubmitting(true);
     setErrorMsg(null);
@@ -153,9 +155,11 @@ export const CreateSquadModal: React.FC<CreateSquadModalProps> = ({
         walkingPreference: 'normal',
         preferredTransport: transport,
         maxWalkingDistanceMeters: 4500,
-        selectedPandalIds,
+        selectedPandalIds: finalPandalIds,
         isCustomTrip: true,
-        notes: `Created by ${currentUser.displayName} for Durga Puja 2026 hopping.`,
+        notes: squadDescription.trim() || `Created by ${currentUser.displayName} for Durga Puja 2026 hopping.`,
+        description: squadDescription.trim() || undefined,
+        emblem: squadAvatar,
       };
 
       const newGroup = await createSharedTripGroup(tripData, currentUser);
@@ -253,6 +257,42 @@ export const CreateSquadModal: React.FC<CreateSquadModalProps> = ({
                 placeholder="e.g. উত্তর কলকাতা সপ্তমী আড্ডা"
                 className="w-full px-3.5 py-2.5 rounded-2xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-small font-bengali font-bold focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
               />
+            </div>
+
+            <div>
+              <label className="text-small font-bold text-stone-700 dark:text-stone-300 block mb-1">
+                Squad Description <span className="text-stone-400 font-normal">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={squadDescription}
+                onChange={(e) => setSquadDescription(e.target.value)}
+                placeholder="e.g. Hopping iconic pandals with friends & family"
+                className="w-full px-3.5 py-2.5 rounded-2xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-small font-medium focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+              />
+            </div>
+
+            <div>
+              <label className="text-small font-bold text-stone-700 dark:text-stone-300 block mb-1">
+                Squad Emblem / Avatar
+              </label>
+              <div className="flex items-center gap-2 overflow-x-auto py-1">
+                {FESTIVE_AVATARS.map((av) => (
+                  <button
+                    key={av.id}
+                    type="button"
+                    onClick={() => setSquadAvatar(av.id)}
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0 transition-transform cursor-pointer ${
+                      squadAvatar === av.id
+                        ? 'ring-2 ring-[#DC2626] scale-110 shadow-md'
+                        : 'opacity-70 hover:opacity-100'
+                    } bg-gradient-to-tr ${av.gradient}`}
+                    title={av.label}
+                  >
+                    {av.emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

@@ -25,16 +25,27 @@ import {
   subscribeToTripUpdates,
   DEMO_PROFILES,
   FESTIVE_AVATARS,
+  fetchUserSquadsFromSupabase,
+  approveJoinRequest,
+  rejectJoinRequest,
 } from '../../services/friendGroupService';
 import { getTripExpenses } from '../../services/groupExpenseService';
 import { isSupabaseConfigured } from '../../services/supabaseClient';
 import { getSavedTrips } from '../../services/tripStorageService';
+import {
+  getUserDisplayName,
+  resolveMemberProfile,
+  getInitials,
+} from '../../utils/userProfileHelper';
 import { ProfileEditModal } from '../group/ProfileEditModal';
 import { JoinGroupModal } from '../group/JoinGroupModal';
 import { CrowdReportModal } from '../group/CrowdReportModal';
+import { CreateSquadModal } from '../group/CreateSquadModal';
+import { ManageSquadModal } from '../group/ManageSquadModal';
 import { GroupExpenseDashboard } from '../group/GroupExpenseDashboard';
 import { ExpenseSplitter } from '../group/ExpenseSplitter';
 import { GroupWalkingEnergyCard } from '../group/GroupWalkingEnergyCard';
+import { TripPlanner } from '../planner/TripPlanner';
 import { DurgaThirdEye, ShankhaIcon, DhakIcon, AlpanaDivider } from '../common/BengaliMotifs';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import confetti from 'canvas-confetti';
@@ -51,6 +62,7 @@ import {
   MapPin,
   Clock,
   Sparkles,
+  Calendar,
   CheckCircle2,
   Flame,
   Radio,
@@ -69,6 +81,7 @@ import {
   Layers,
   Calculator,
   Split,
+  X,
 } from 'lucide-react';
 
 interface GroupScreenProps {
@@ -100,12 +113,13 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
   const [activeGroupId, setActiveGroupId] = useState<string>(() => {
     const groups = getMyTripGroups();
     const forCity = groups.find((g) => g.trip.city === activeCity);
-    return forCity ? forCity.trip.id : groups[0]?.trip.id || 'group-kolkata-2026';
+    return forCity ? forCity.trip.id : groups[0]?.trip.id || '';
   });
 
-  // Active Group Details
+  // Active Group Details - strictly null if user has no squads
   const activeGroup = useMemo(() => {
-    return getTripGroup(activeGroupId) || myGroups[0] || null;
+    if (myGroups.length === 0) return null;
+    return myGroups.find((g) => g.trip.id === activeGroupId) || myGroups[0] || null;
   }, [activeGroupId, myGroups]);
 
   // Per-member visit statuses for active group
@@ -117,10 +131,13 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCrowdModal, setShowCrowdModal] = useState(false);
+  const [showCreateSquadModal, setShowCreateSquadModal] = useState(false);
+  const [showManageSquadModal, setShowManageSquadModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activeGroupSubTab, setActiveGroupSubTab] = useState<'squad' | 'splitter' | 'expenses'>('squad');
+  const [activeGroupSubTab, setActiveGroupSubTab] = useState<'squad' | 'planner' | 'splitter' | 'expenses'>('squad');
   const [expenseRefreshKey, setExpenseRefreshKey] = useState(0);
 
   // Count active group expenses for tab badge
@@ -128,6 +145,29 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
     if (!activeGroup) return 0;
     return getTripExpenses(activeGroup.trip.id).length;
   }, [activeGroup, expenseRefreshKey]);
+
+  // Fetch user's squads from Supabase on mount and user change
+  useEffect(() => {
+    let isMounted = true;
+    async function loadRemoteSquads() {
+      try {
+        const squads = await fetchUserSquadsFromSupabase(currentUser.id);
+        if (isMounted && squads.length > 0) {
+          setMyGroups(squads);
+          setActiveGroupId((prev) => {
+            if (prev && squads.some((g) => g.trip.id === prev)) return prev;
+            return squads[0].trip.id;
+          });
+        }
+      } catch (err) {
+        console.warn('Error loading squads from Supabase:', err);
+      }
+    }
+    loadRemoteSquads();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser.id]);
 
   // Sync state when activeGroup changes or city changes
   useEffect(() => {
@@ -152,11 +192,73 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
   }, [activeGroup?.trip.id]);
 
   // Switch demo user test function
-  const handleSwitchUser = (demoId: string) => {
+  const handleSwitchUser = async (demoId: string) => {
     const nextUser = switchDemoUser(demoId);
     setCurrentUser(nextUser);
-    setMyGroups(getMyTripGroups(nextUser.id));
     playKanshorBell(0.5);
+    try {
+      const squads = await fetchUserSquadsFromSupabase(nextUser.id);
+      setMyGroups(squads);
+      if (squads.length > 0) {
+        setActiveGroupId(squads[0].trip.id);
+      }
+    } catch (e) {
+      setMyGroups(getMyTripGroups(nextUser.id));
+    }
+  };
+
+  const isOperatorAdmin = Boolean(
+    activeGroup &&
+      (activeGroup.createdBy === currentUser.id ||
+        activeGroup.myRole === 'admin' ||
+        activeGroup.members.some((m) => m.userId === currentUser.id && m.role === 'admin'))
+  );
+
+  const pendingRequests = useMemo(() => {
+    if (!activeGroup || !activeGroup.joinRequests) return [];
+    return activeGroup.joinRequests.filter((r) => r.status === 'pending');
+  }, [activeGroup?.joinRequests]);
+
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+
+  const handleApproveJoinRequest = async (requestId: string, reqName: string) => {
+    if (!activeGroup) return;
+    setProcessingRequestId(requestId);
+    try {
+      const res = await approveJoinRequest(activeGroup.trip.id, requestId, currentUser.id);
+      if (res.success && res.group) {
+        setMyGroups(getMyTripGroups());
+        playKanshorBell(0.8);
+        playDhakHit('dha', 0.9);
+        setToastMessage(`✓ ${reqName} approved and added to squad!`);
+        setTimeout(() => setToastMessage(null), 3000);
+      } else {
+        setToastMessage(res.error || 'Failed to approve request');
+      }
+    } catch (err: any) {
+      setToastMessage(err?.message || 'Error approving request');
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
+  const handleRejectJoinRequest = async (requestId: string) => {
+    if (!activeGroup) return;
+    setProcessingRequestId(requestId);
+    try {
+      const res = await rejectJoinRequest(activeGroup.trip.id, requestId, currentUser.id);
+      if (res.success) {
+        setMyGroups(getMyTripGroups());
+        setToastMessage('Join request rejected.');
+        setTimeout(() => setToastMessage(null), 2500);
+      } else {
+        setToastMessage(res.error || 'Failed to reject request');
+      }
+    } catch (err: any) {
+      setToastMessage(err?.message || 'Error rejecting request');
+    } finally {
+      setProcessingRequestId(null);
+    }
   };
 
   // Copy 6-char Invite Code
@@ -300,18 +402,26 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
             </div>
           </div>
 
-          {/* Profile Actions */}
-          <div className="flex items-center gap-2">
+          {/* Profile & Squad Actions */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              id="btn-create-squad-header"
+              onClick={() => setShowCreateSquadModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 via-[#DC2626] to-[#881337] hover:brightness-110 active:scale-95 text-white text-micro font-bold shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <span>Create Squad</span>
+            </button>
             <button
               onClick={() => setShowProfileModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-micro font-bold border border-stone-300 dark:border-stone-700 transition-all flex items-center gap-1"
+              className="px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-micro font-bold border border-stone-300 dark:border-stone-700 transition-all flex items-center gap-1 cursor-pointer"
             >
               <User className="w-3.5 h-3.5 text-[#DC2626]" />
               <span>Edit Profile</span>
             </button>
             <button
               onClick={() => setShowJoinModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-[#991B1B] hover:bg-[#DC2626] text-white text-micro font-bold shadow-sm transition-all flex items-center gap-1"
+              className="px-3 py-1.5 rounded-xl bg-[#991B1B] hover:bg-[#DC2626] text-white text-micro font-bold shadow-sm transition-all flex items-center gap-1 cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5" />
               <span>Enter Code</span>
@@ -349,6 +459,66 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Squad Switcher Bar (when user has squads) */}
+      {myGroups.length > 0 && (
+        <div
+          className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shadow-xs ${
+            isDarkMode ? 'bg-[#22161E] border-stone-800' : 'bg-amber-50/70 border-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 shrink-0 text-micro font-bold text-stone-700 dark:text-stone-300">
+            <Users className="w-3.5 h-3.5 text-[#DC2626]" />
+            <span>My Squads ({myGroups.length}):</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto">
+            {myGroups.map((g) => {
+              const isActive = g.trip.id === activeGroupId;
+              const isOwner = g.createdBy === currentUser.id;
+              return (
+                <button
+                  key={g.trip.id}
+                  onClick={() => {
+                    setActiveGroupId(g.trip.id);
+                    playKanshorBell(0.3);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-micro font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isActive
+                      ? 'bg-gradient-to-r from-amber-600 to-[#DC2626] text-white shadow-xs'
+                      : isDarkMode
+                      ? 'bg-stone-800 text-stone-300 hover:text-white border border-stone-700'
+                      : 'bg-white text-stone-700 hover:text-stone-950 border border-stone-300 shadow-2xs'
+                  }`}
+                >
+                  <span className="truncate max-w-[140px]">{g.trip.name}</span>
+                  {isOwner && (
+                    <Crown className={`w-3 h-3 ${isActive ? 'text-[#FEF08A]' : 'text-amber-500'}`} />
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setShowCreateSquadModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-[#DC2626]/10 hover:bg-[#DC2626]/20 text-[#DC2626] text-micro font-bold border border-[#DC2626]/30 flex items-center gap-1 cursor-pointer transition-colors"
+              title="Create another squad"
+            >
+              <Plus className="w-3 h-3" />
+              <span>New</span>
+            </button>
+
+            <button
+              onClick={() => setShowJoinModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 text-micro font-bold border border-amber-500/30 flex items-center gap-1 cursor-pointer transition-colors"
+              title="Join a squad with an invite code"
+            >
+              <KeyRound className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+              <span>Join Code</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Backend & Realtime Status Indicator */}
       <div
@@ -394,6 +564,21 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
                 <span className="px-2 py-0.5 rounded-lg bg-[#DC2626]/15 text-[#DC2626] font-black text-micro uppercase tracking-wider">
                   {activeGroup.trip.city.toUpperCase()} TRIP
                 </span>
+                {activeGroup.createdBy === currentUser.id ? (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-black flex items-center gap-1">
+                    <Crown className="w-2.5 h-2.5 text-amber-500" />
+                    <span>Squad Owner</span>
+                  </span>
+                ) : activeGroup.myRole === 'admin' ? (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-black flex items-center gap-1">
+                    <Crown className="w-2.5 h-2.5 text-amber-500" />
+                    <span>Admin</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-[10px] font-bold">
+                    Member
+                  </span>
+                )}
                 <span className="text-micro text-stone-500 tabular-nums">
                   📅 {activeGroup.trip.date} • ⏰ {activeGroup.trip.startTime} - {activeGroup.trip.endTime}
                 </span>
@@ -408,33 +593,45 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
               )}
             </div>
 
-            {/* Invite Code Badge with 1-Click Copy */}
+            {/* Action buttons: Manage Squad & Invite Code */}
             <div className="flex flex-col items-end gap-1.5">
-              <div className="flex items-center gap-1.5 p-1.5 px-3 rounded-2xl bg-amber-500/15 border border-amber-500/30">
-                <div className="text-right">
-                  <span className="text-[9px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 block">
-                    Invite Code
-                  </span>
-                  <span className="font-mono font-black text-base text-[#DC2626] tracking-wider leading-none">
-                    {activeGroup.inviteCode}
-                  </span>
-                </div>
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={handleCopyCode}
-                  className="p-1.5 rounded-xl bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 shadow-xs transition-transform active:scale-95"
-                  title="Copy Invite Code"
+                  id="btn-manage-squad-settings"
+                  onClick={() => setShowManageSquadModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 text-micro font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Manage squad members, add members, or edit details"
                 >
-                  {copiedCode ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5 text-[#DC2626]" />
-                  )}
+                  <Users className="w-3.5 h-3.5 text-[#DC2626]" />
+                  <span>Manage Squad</span>
                 </button>
+
+                <div className="flex items-center gap-1.5 p-1.5 px-3 rounded-2xl bg-amber-500/15 border border-amber-500/30">
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 block">
+                      Invite Code
+                    </span>
+                    <span className="font-mono font-black text-base text-[#DC2626] tracking-wider leading-none">
+                      {activeGroup.inviteCode}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleCopyCode}
+                    className="p-1.5 rounded-xl bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 shadow-xs transition-transform active:scale-95 cursor-pointer"
+                    title="Copy Invite Code"
+                  >
+                    {copiedCode ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-[#DC2626]" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <button
                 onClick={handleCopyShareLink}
-                className="text-micro font-bold text-[#DC2626] hover:underline flex items-center gap-1"
+                className="text-micro font-bold text-[#DC2626] hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <Share2 className="w-3 h-3" />
                 <span>{copiedLink ? 'Link Copied!' : 'Share Squad Link'}</span>
@@ -478,8 +675,8 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
             </div>
           </div>
 
-          {/* Sub-navigation Switcher: Squad vs Splitter vs Full Ledger */}
-          <div className="p-1 rounded-2xl bg-stone-200/70 dark:bg-stone-800/80 grid grid-cols-3 gap-1">
+          {/* Sub-navigation Switcher: Squad vs Planner vs Splitter vs Full Ledger */}
+          <div className="p-1 rounded-2xl bg-stone-200/70 dark:bg-stone-800/80 grid grid-cols-2 sm:grid-cols-4 gap-1">
             <button
               id="subtab-squad-btn"
               onClick={() => {
@@ -497,6 +694,22 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
             </button>
 
             <button
+              id="subtab-planner-btn"
+              onClick={() => {
+                setActiveGroupSubTab('planner');
+                playKanshorBell(0.4);
+              }}
+              className={`py-2 px-2 sm:px-3 rounded-xl text-micro sm:text-small font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeGroupSubTab === 'planner'
+                  ? 'bg-gradient-to-r from-amber-600 to-[#DC2626] text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <span className="truncate">Day Planner</span>
+            </button>
+
+            <button
               id="subtab-splitter-btn"
               onClick={() => {
                 setActiveGroupSubTab('splitter');
@@ -504,12 +717,12 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
               }}
               className={`py-2 px-2 sm:px-3 rounded-xl text-micro sm:text-small font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeGroupSubTab === 'splitter'
-                  ? 'bg-gradient-to-r from-amber-600 to-[#DC2626] text-white shadow-xs'
+                  ? 'bg-white dark:bg-stone-900 text-[#881337] dark:text-[#FEF08A] shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
               }`}
             >
-              <Calculator className="w-3.5 h-3.5 text-[#FEF08A]" />
-              <span className="truncate">Expense Splitter</span>
+              <Calculator className="w-3.5 h-3.5 text-amber-500" />
+              <span className="truncate">Splitter</span>
             </button>
 
             <button
@@ -535,7 +748,22 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
           </div>
 
           {/* Render Active Sub-View */}
-          {activeGroupSubTab === 'splitter' ? (
+          {activeGroupSubTab === 'planner' ? (
+            <TripPlanner
+              trip={activeGroup.trip}
+              members={activeGroup.members}
+              currentUser={currentUser}
+              allPandals={pandals}
+              isDarkMode={isDarkMode}
+              onNavigateToPandal={(pId) => {
+                const target = pandals.find((p) => p.id === pId);
+                if (target) onSelectPandal(target);
+              }}
+              onPlanUpdated={() => {
+                setMyGroups(getMyTripGroups());
+              }}
+            />
+          ) : activeGroupSubTab === 'splitter' ? (
             <ExpenseSplitter
               trip={activeGroup.trip}
               members={activeGroup.members}
@@ -556,6 +784,81 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
             />
           ) : (
             <>
+              {/* Admin Pending Join Requests Section */}
+              {isOperatorAdmin && pendingRequests.length > 0 && (
+                <div
+                  className={`p-3.5 rounded-2xl border space-y-3 animate-fadeIn mb-3 ${
+                    isDarkMode
+                      ? 'bg-gradient-to-br from-[#2D1B22] to-[#1E131A] border-amber-500/40'
+                      : 'bg-gradient-to-br from-amber-50/90 to-rose-50/70 border-amber-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
+                      <h4 className="font-display font-black text-small uppercase tracking-wider text-[#881337] dark:text-[#FEF08A]">
+                        Pending Join Requests ({pendingRequests.length})
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200">
+                      Approval Needed
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {pendingRequests.map((req) => {
+                      const av = FESTIVE_AVATARS.find((a) => a.id === req.userAvatar) || FESTIVE_AVATARS[0];
+                      const isBusy = processingRequestId === req.id;
+                      return (
+                        <div
+                          key={req.id}
+                          className="p-2.5 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${av.gradient} flex items-center justify-center text-sm shadow-2xs shrink-0 font-bold text-white`}>
+                              {av.emoji}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-small text-stone-900 dark:text-white truncate">
+                                {req.userName}
+                              </div>
+                              <div className="text-[10px] text-stone-500 truncate flex items-center gap-1">
+                                <span>{req.userEmail || 'Requested to join squad'}</span>
+                                <span>•</span>
+                                <span className="tabular-nums">
+                                  {new Date(req.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleApproveJoinRequest(req.id, req.userName)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-micro font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <Check className="w-3 h-3 stroke-[3]" />
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectJoinRequest(req.id)}
+                              className="px-2.5 py-1.5 rounded-lg bg-stone-200 hover:bg-rose-100 dark:bg-stone-800 dark:hover:bg-rose-900/40 text-stone-700 hover:text-rose-700 dark:text-stone-300 dark:hover:text-rose-300 disabled:opacity-50 text-micro font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                              <span>Reject</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Member Roster List */}
               <div className="space-y-2.5 pt-1">
                 <div className="flex items-center justify-between px-0.5">
@@ -565,14 +868,27 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
                       Squad Roster & Darshan Progress ({activeGroup.members.length})
                     </h4>
                   </div>
-                  <span className="text-micro text-stone-500 font-bengali font-bold">যাত্রী তালিকা</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowManageSquadModal(true)}
+                      className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-[#DC2626] hover:brightness-110 active:scale-95 text-white text-micro font-bold flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                      title="Add members or manage squad"
+                    >
+                      <Plus className="w-3 h-3 text-[#FEF08A]" />
+                      <span>Add Member</span>
+                    </button>
+                    <span className="text-micro text-stone-500 font-bengali font-bold hidden sm:inline">যাত্রী তালিকা</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   {activeGroup.members.map((member) => {
                     const isCurrent = member.userId === currentUser.id;
-                    const memberProfile = member.profile || DEMO_PROFILES.find((p) => p.id === member.userId) || currentUser;
+                    const isSquadOwner = member.userId === activeGroup.createdBy || Boolean(member.isOwner);
+                    const isAdmin = member.role === 'admin' || isSquadOwner;
+                    const memberProfile = resolveMemberProfile(member, isCurrent ? currentUser : undefined);
                     const memberAvatar = FESTIVE_AVATARS.find((a) => a.id === memberProfile.avatarUrl) || FESTIVE_AVATARS[0];
+                    const initials = getInitials(memberProfile.displayName);
 
                     // Calculate member's completed pandal darshans
                     const completedCount = visitStatuses.filter(
@@ -597,18 +913,28 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
                         {/* Avatar & Names */}
                         <div className="flex items-center gap-3 min-w-0">
                           <div
-                            className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${memberAvatar.gradient} flex items-center justify-center text-xl shrink-0 shadow-xs`}
+                            className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${memberAvatar.gradient} flex items-center justify-center text-xl shrink-0 shadow-xs font-bold text-white`}
                           >
-                            {memberAvatar.emoji}
+                            {memberAvatar.emoji || initials}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-display font-bold text-small truncate">
                                 {memberProfile.displayName}
                               </span>
-                              {member.role === 'admin' && (
-                                <span title="Trip Admin">
-                                  <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              {isSquadOwner ? (
+                                <span className="px-1.5 py-0.2 rounded-md bg-amber-500 text-stone-950 text-[9px] font-black flex items-center gap-0.5 shadow-2xs">
+                                  <Crown className="w-2.5 h-2.5 text-stone-950 fill-stone-950" />
+                                  <span>Owner • Admin</span>
+                                </span>
+                              ) : isAdmin ? (
+                                <span className="px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[9px] font-black flex items-center gap-0.5">
+                                  <Crown className="w-2.5 h-2.5 text-amber-500" />
+                                  <span>Admin</span>
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded-md bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-[9px] font-semibold">
+                                  Member
                                 </span>
                               )}
                               {isCurrent && (
@@ -816,20 +1142,84 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
           <div className="w-14 h-14 rounded-full bg-[#DC2626]/10 flex items-center justify-center mx-auto text-[#DC2626]">
             <Users size={32} />
           </div>
-          <h3 className="font-display font-bold text-h3 text-stone-800 dark:text-stone-200">
-            No Shared Squad Joined Yet
+          <h3 className="font-display font-black text-h3 text-stone-900 dark:text-white">
+            Create Your Puja Squad
           </h3>
-          <p className="text-small text-stone-500 max-w-xs mx-auto font-bengali">
-            বন্ধুদের সাথে একসাথে বের হতে ইনভাইট কোড দিয়ে যুক্ত হন অথবা নতুন শারদ ট্রিপ শুরু করুন।
+          <p className="text-small text-stone-600 dark:text-stone-300 max-w-xs mx-auto font-bengali font-bold">
+            বন্ধুদের সাথে একসাথে পুজো পরিক্রমা করুন
           </p>
-          <div className="flex justify-center gap-2 pt-2">
+          <div className="flex flex-wrap justify-center gap-2.5 pt-2">
+            <button
+              id="btn-create-first-squad"
+              onClick={() => setShowCreateSquadModal(true)}
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 via-[#DC2626] to-[#881337] hover:brightness-110 active:scale-95 text-white text-btn font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Plus className="w-4 h-4 text-[#FEF08A]" />
+              <span>+ Create Squad</span>
+            </button>
             <button
               onClick={() => setShowJoinModal(true)}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#991B1B] to-[#DC2626] text-white text-btn font-bold shadow-md"
+              className="px-5 py-2.5 rounded-2xl bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 text-btn font-bold transition-all cursor-pointer"
             >
               Enter Squad Invite Code
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Create Squad Modal */}
+      {showCreateSquadModal && (
+        <CreateSquadModal
+          currentUser={currentUser}
+          activeCity={activeCity}
+          pandals={pandals}
+          onSquadCreated={(newGroup) => {
+            const updated = getMyTripGroups(currentUser.id);
+            setMyGroups(updated);
+            setActiveGroupId(newGroup.trip.id);
+            setShowCreateSquadModal(false);
+            setToastMessage(`Squad "${newGroup.trip.name}" created successfully!`);
+            setTimeout(() => setToastMessage(null), 3500);
+          }}
+          onClose={() => setShowCreateSquadModal(false)}
+          userPrefs={userPrefs}
+        />
+      )}
+
+      {/* Manage Squad Modal */}
+      {showManageSquadModal && activeGroup && (
+        <ManageSquadModal
+          group={activeGroup}
+          currentUser={currentUser}
+          isDarkMode={isDarkMode}
+          onClose={() => setShowManageSquadModal(false)}
+          onGroupUpdated={(updatedGroup) => {
+            const updated = getMyTripGroups(currentUser.id);
+            setMyGroups(updated);
+            setToastMessage(`Squad "${updatedGroup.trip.name}" updated!`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
+          onGroupLeftOrDeleted={(nextGroupId) => {
+            const updated = getMyTripGroups(currentUser.id);
+            setMyGroups(updated);
+            if (nextGroupId) {
+              setActiveGroupId(nextGroupId);
+            } else if (updated.length > 0) {
+              setActiveGroupId(updated[0].trip.id);
+            }
+          }}
+          onShowToast={(msg) => {
+            setToastMessage(msg);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
+        />
+      )}
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-stone-900/95 text-white border border-amber-500/40 shadow-2xl text-small font-bold flex items-center gap-2 animate-fadeIn pointer-events-none">
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
 
@@ -857,6 +1247,7 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
           }}
           onClose={() => setShowJoinModal(false)}
           userPrefs={userPrefs}
+          onUserSwitch={(u) => handleSwitchUser(u.id)}
         />
       )}
 

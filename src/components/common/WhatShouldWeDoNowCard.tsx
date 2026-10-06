@@ -172,6 +172,7 @@ export const WhatShouldWeDoNowCard: React.FC<WhatShouldWeDoNowCardProps> = ({
           todayWalkedDistanceMeters: walkingStats.totalDistanceMeters,
           energyAwareMode: true,
           city: activeCity,
+          weather: activeWeather,
         });
 
         const worth = Math.round(pandal.overallQualityScore * 10);

@@ -6,11 +6,14 @@ import {
   RecommendationLevel,
   UserPreferences,
   AnchorLocation,
+  UserProfile,
 } from '../../types';
 import { DurgaThirdEye, ShankhaIcon, DhakIcon } from '../common/BengaliMotifs';
 import { CrowdIntensityIndicator } from '../common/CrowdIntensityIndicator';
 import { PandalCrowdHeatmap } from '../common/PandalCrowdHeatmap';
 import { QRCodeScannerModal } from '../discovery/QRCodeScannerModal';
+import { CreatePandalModal } from '../pandal/CreatePandalModal';
+import { getCurrentUserProfile } from '../../services/friendGroupService';
 import {
   DEFAULT_ANCHORS,
   getWorthwhileNearbyPandals,
@@ -48,6 +51,7 @@ interface DiscoveryScreenProps {
   onToggleTripPandal: (id: string) => void;
   onToggleVisited?: (id: string) => void;
   onSelectPandal: (pandal: Pandal) => void;
+  onPandalCreated?: (pandal: Pandal) => void;
   userPrefs: UserPreferences;
 }
 
@@ -61,9 +65,11 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
   onToggleTripPandal,
   onToggleVisited,
   onSelectPandal,
+  onPandalCreated,
   userPrefs,
 }) => {
   const isDarkMode = userPrefs.themeMode === 'mahasaptami_night';
+  const currentUser = useMemo(() => getCurrentUserProfile(), []);
   const cityAnchors = useMemo(() => DEFAULT_ANCHORS.filter((a) => a.city === activeCity), [activeCity]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +81,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
   const [selectedAnchorId, setSelectedAnchorId] = useState<string>('none');
   const [sortBy, setSortBy] = useState<'worth' | 'rating' | 'distance' | 'queue' | 'year'>('worth');
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showCreatePandalModal, setShowCreatePandalModal] = useState(false);
 
   const activeAnchor = useMemo(() => {
     return cityAnchors.find((a) => a.id === selectedAnchorId);
@@ -82,6 +89,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
 
   const categories: Array<{ id: string; label: string; bengali: string }> = [
     { id: 'all', label: 'All Pandals', bengali: 'সব মণ্ডপ' },
+    { id: 'community', label: 'Community / User', bengali: 'পাড়োয়ারী ও নিজস্ব' },
     { id: 'theme_marvel', label: 'Theme Marvels', bengali: 'থিম সৃষ্টি' },
     { id: 'traditional_sabeki', label: 'Sabeki (Traditional)', bengali: 'সাবেকি একচালা' },
     { id: 'crowd_puller', label: 'Mega Crowd Pullers', bengali: 'বিশাল ভিড়' },
@@ -154,6 +162,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
       })
       .filter((p) => {
         if (selectedCategory === 'all') return true;
+        if (selectedCategory === 'community') return Boolean(p.isUserCreated);
         return p.category === selectedCategory;
       })
       .filter((p) => {
@@ -211,7 +220,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
 
   return (
     <div id="discovery-screen" className="space-y-4 pb-10 animate-fadeIn">
-      {/* Search Bar & Physical QR Code Scanner Button */}
+      {/* Search Bar, Create Pandal & Physical QR Code Scanner Buttons */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
@@ -238,13 +247,63 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
         </div>
 
         <button
+          id="btn-discovery-create-pandal"
+          onClick={() => setShowCreatePandalModal(true)}
+          className="py-3 px-3 rounded-2xl bg-gradient-to-r from-amber-600 to-[#DC2626] hover:brightness-110 active:scale-95 text-white font-bold text-btn flex items-center gap-1 shadow-sm transition-all shrink-0 border border-amber-400/40 cursor-pointer"
+          title="Add your neighborhood custom pandal"
+        >
+          <Plus className="w-4 h-4 text-[#FEF08A]" />
+          <span className="font-bold">Add Pandal</span>
+        </button>
+
+        <button
           id="btn-discovery-qr-scanner"
           onClick={() => setShowQRScanner(true)}
-          className="py-3 px-3.5 rounded-2xl bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:brightness-110 active:scale-95 text-white font-bold text-btn flex items-center gap-1.5 shadow-sm transition-all shrink-0 border border-amber-400/40"
+          className="py-3 px-3 rounded-2xl bg-gradient-to-r from-[#DC2626] to-[#991B1B] hover:brightness-110 active:scale-95 text-white font-bold text-btn flex items-center gap-1.5 shadow-sm transition-all shrink-0 border border-amber-400/40 cursor-pointer"
           title="Scan physical QR code at pandal gate to check in and mark visit"
         >
           <QrCode className="w-4 h-4 text-[#FEF08A]" />
-          <span className="font-bold">Scan & Visit</span>
+          <span className="font-bold hidden xs:inline">Scan</span>
+        </button>
+      </div>
+
+      {/* Community Neighborhood Pandal Banner */}
+      <div
+        id="banner-community-create-pandal"
+        onClick={() => setShowCreatePandalModal(true)}
+        className={`p-3 rounded-2xl border flex items-center justify-between gap-2.5 cursor-pointer shadow-xs transition-all hover:scale-[1.005] active:scale-[0.99] ${
+          isDarkMode
+            ? 'bg-gradient-to-r from-[#2A1822] via-[#351A27] to-[#2A1822] border-amber-500/30 text-white'
+            : 'bg-gradient-to-r from-orange-50 via-amber-50 to-rose-50 border-amber-300 text-stone-900'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-[#DC2626] text-white flex items-center justify-center shrink-0 shadow-sm">
+            <Sparkles className="w-5 h-5 text-[#FEF08A]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-small font-black leading-tight text-stone-900 dark:text-white flex items-center gap-1.5">
+              <span>Have a Neighborhood Puja? Add Your Pandal</span>
+              <span className="px-2 py-0.5 rounded-full bg-[#DC2626] text-white text-[10px] font-black uppercase tracking-wider hidden sm:inline">
+                Community
+              </span>
+            </p>
+            <p className="text-micro text-stone-600 dark:text-stone-300 font-medium truncate">
+              Upload custom photo or use default Maa Durga artwork (পাড়ার পুজো যুক্ত করুন)
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCreatePandalModal(true);
+          }}
+          className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#DC2626] to-[#881337] hover:brightness-110 text-white text-btn font-extrabold shrink-0 shadow-xs flex items-center gap-1 cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5 text-[#FEF08A]" />
+          <span>Add</span>
         </button>
       </div>
 
@@ -495,6 +554,12 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
 
                     {/* Recommendation Level & Category badge */}
                     <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
+                      {pandal.isUserCreated && (
+                        <span className="bg-gradient-to-r from-amber-600 to-[#DC2626] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 border border-amber-300/40">
+                          <Sparkles className="w-2.5 h-2.5 text-[#FEF08A]" />
+                          <span>Community Pandal</span>
+                        </span>
+                      )}
                       <span
                         className={`text-micro font-bold px-2 py-0.5 rounded-full shadow-sm ${
                           pandal.recommendationLevel === 'Must Visit'
@@ -633,6 +698,24 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({
         onSelectPandal={onSelectPandal}
         isDarkMode={isDarkMode}
       />
+
+      {/* User-Created Custom Pandal Creation Modal */}
+      {showCreatePandalModal && (
+        <CreatePandalModal
+          activeCity={activeCity}
+          currentUser={currentUser}
+          onPandalCreated={(newPandal) => {
+            setShowCreatePandalModal(false);
+            if (onPandalCreated) {
+              onPandalCreated(newPandal);
+            } else {
+              onSelectPandal(newPandal);
+            }
+          }}
+          onClose={() => setShowCreatePandalModal(false)}
+          userPrefs={userPrefs}
+        />
+      )}
     </div>
   );
 };

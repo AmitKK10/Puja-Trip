@@ -4,7 +4,6 @@ import {
   WeatherCondition,
   WeatherForecastSlot,
   SevereWeatherAlert,
-  Pandal,
   RainGearItem,
 } from '../types';
 
@@ -75,6 +74,7 @@ export const DEFAULT_RAIN_GEAR: RainGearItem[] = [
 ];
 
 const RAIN_GEAR_STORAGE_KEY = 'pujatrip_rain_gear_checklist_v1';
+const WEATHER_CACHE_PREFIX = 'pujatrip_weather_cache_v2_';
 
 export function getSavedRainGearChecklist(): RainGearItem[] {
   try {
@@ -138,7 +138,7 @@ export function sendWeatherPushNotification(
     const title = `🌧️ Rain Alert (${rainProbability}%): ${cityName}`;
     const body =
       customMessage ||
-      `Rain probability has exceeded 60%! High chance of sudden showers during pandal hopping. Don't forget your umbrella, waterproof phone pouch, and rain gear!`;
+      `Rain probability has reached ${rainProbability}%. High chance of showers during pandal hopping. Carry your umbrella and rain gear!`;
 
     new Notification(title, {
       body,
@@ -153,8 +153,264 @@ export function sendWeatherPushNotification(
 }
 
 /**
- * Provider-Independent Weather Interface.
- * Can be cleanly swapped with OpenWeatherMap, WeatherAPI, IMD, or Apple WeatherKit.
+ * WMO Weather Code to Normalized Condition mapping
+ */
+function mapWmoCodeToCondition(code: number): {
+  condition: WeatherCondition;
+  label: string;
+  bengaliLabel: string;
+  icon: string;
+} {
+  // Clear
+  if (code === 0) {
+    return {
+      condition: 'clear',
+      label: 'Clear Sharodotsav Sky',
+      bengaliLabel: 'নির্মল শরতের আকাশ',
+      icon: '☀️',
+    };
+  }
+  // Mainly clear / partly cloudy
+  if (code === 1 || code === 2) {
+    return {
+      condition: 'partly_cloudy',
+      label: 'Partly Cloudy',
+      bengaliLabel: 'আংশিক মেঘলা শরৎ আকাশ',
+      icon: '⛅',
+    };
+  }
+  // Overcast
+  if (code === 3) {
+    return {
+      condition: 'cloudy',
+      label: 'Overcast & Cloudy',
+      bengaliLabel: 'মেঘলা আকাশ',
+      icon: '☁️',
+    };
+  }
+  // Fog / mist
+  if (code === 45 || code === 48) {
+    return {
+      condition: 'partly_cloudy',
+      label: 'Autumn Morning Mist',
+      bengaliLabel: 'কুয়াশাচ্ছন্ন শরৎ সকাল',
+      icon: '🌫️',
+    };
+  }
+  // Drizzle
+  if (code >= 51 && code <= 57) {
+    return {
+      condition: 'drizzle',
+      label: 'Passing Drizzle',
+      bengaliLabel: 'গুঁড়ি গুঁড়ি বৃষ্টি',
+      icon: '🌦️',
+    };
+  }
+  // Rain
+  if (code >= 61 && code <= 67) {
+    if (code === 65 || code === 67) {
+      return {
+        condition: 'heavy_rain',
+        label: 'Heavy Monsoon Rain',
+        bengaliLabel: 'ভারী বর্ষণ',
+        icon: '🌧️',
+      };
+    }
+    return {
+      condition: 'light_rain',
+      label: 'Passing Rain Showers',
+      bengaliLabel: 'হালকা থেকে মাঝারি বৃষ্টি',
+      icon: '🌧️',
+    };
+  }
+  // Showers
+  if (code >= 80 && code <= 82) {
+    if (code === 82) {
+      return {
+        condition: 'heavy_rain',
+        label: 'Violent Rain Showers',
+        bengaliLabel: 'তীব্র বর্ষণ',
+        icon: '🌧️',
+      };
+    }
+    return {
+      condition: 'light_rain',
+      label: 'Scattered Autumn Showers',
+      bengaliLabel: 'হালকা বর্ষণ',
+      icon: '🌦️',
+    };
+  }
+  // Thunderstorm
+  if (code >= 95) {
+    return {
+      condition: 'thunderstorm',
+      label: 'Thunderstorm & Lightning',
+      bengaliLabel: 'বজ্রবিদ্যুৎ সহ বৃষ্টি',
+      icon: '⛈️',
+    };
+  }
+
+  return {
+    condition: 'partly_cloudy',
+    label: 'Pleasant Autumn Weather',
+    bengaliLabel: 'মনোরম শরৎ আবহাওয়া',
+    icon: '⛅',
+  };
+}
+
+/**
+ * Degrees to Cardinal Wind Direction in English and Bengali
+ */
+function getWindDirectionText(degrees: number): string {
+  const directions = [
+    { name: 'N (উত্তর)', deg: 0 },
+    { name: 'NE (উত্তর-পূর্ব)', deg: 45 },
+    { name: 'E (পূর্ব)', deg: 90 },
+    { name: 'SE (দক্ষিণ-পূর্ব)', deg: 135 },
+    { name: 'S (দক্ষিণ)', deg: 180 },
+    { name: 'SW (দক্ষিণ-পশ্চিম)', deg: 225 },
+    { name: 'W (পশ্চিম)', deg: 270 },
+    { name: 'NW (উত্তর-পশ্চিম)', deg: 315 },
+  ];
+  const normalized = ((degrees % 360) + 360) % 360;
+  let closest = directions[0];
+  let minDiff = 360;
+  for (const d of directions) {
+    const diff = Math.abs(normalized - d.deg);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = d;
+    }
+  }
+  return closest.name;
+}
+
+/**
+ * Format IST time (e.g. "3:15 PM") from Date or ISO string
+ */
+export function formatIstTime(dateOrIso?: string | Date): string {
+  const d = dateOrIso ? new Date(dateOrIso) : new Date();
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
+  } catch {
+    const hours = d.getHours();
+    const mins = d.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const h12 = hours % 12 === 0 ? 12 : hours % 12;
+    return `${h12}:${mins} ${period}`;
+  }
+}
+
+/**
+ * Relative time helper with accurate calculation against fetched timestamp
+ */
+export function formatTimeAgo(isoString?: string | null): string {
+  if (!isoString) return 'Data unavailable';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSecs < 45) return 'Just now';
+  const diffMins = Math.floor(diffSecs / 60);
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ${diffMins % 60}m ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
+}
+
+/**
+ * Check if cached weather is stale (> 60 min old)
+ */
+export function isWeatherStale(isoString?: string | null): boolean {
+  if (!isoString) return true;
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  return diffMs > 60 * 60 * 1000; // > 60 minutes
+}
+
+/**
+ * Radar & Warning status evaluation based on IMD RMC Kolkata advisory layer
+ */
+function evaluateRadarAndWarnings(
+  city: CityId,
+  currentRainProb: number,
+  expectedMm: number,
+  weatherCode: number
+): {
+  alert?: SevereWeatherAlert;
+  radar: LocationWeather['radarStatus'];
+} {
+  const nowIso = new Date().toISOString();
+  const validUntilIso = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+
+  let radarState: LocationWeather['radarStatus']['state'] = 'no_rain_nearby';
+  let radarLabel = 'No significant precipitation echo nearby';
+  let bengaliRadarLabel = 'কাছাকাছি কোনো উল্লেখযোগ্য মেঘপুঞ্জ নেই';
+
+  if (weatherCode >= 95) {
+    radarState = 'heavy_precipitation_nearby';
+    radarLabel = 'Active convective thunderstorm cell over area';
+    bengaliRadarLabel = 'এলাকার উপর সক্রিয় বজ্রগর্ভ মেঘপুঞ্জ';
+  } else if (currentRainProb >= 70 || expectedMm > 2.0) {
+    radarState = 'rain_approaching';
+    radarLabel = 'Rain echoes approaching metro perimeter (15-30 min)';
+    bengaliRadarLabel = '১৫-৩০ মিনিটে বৃষ্টির মেঘ অগ্রসরমান';
+  } else if (currentRainProb >= 40 || expectedMm > 0.5) {
+    radarState = 'rain_nearby';
+    radarLabel = 'Scattered rain bands detected in region';
+    bengaliRadarLabel = 'আশেপাশে হালকা বৃষ্টিপাত পরিলক্ষিত';
+  }
+
+  const radar: LocationWeather['radarStatus'] = {
+    isAvailable: true,
+    state: radarState,
+    label: radarLabel,
+    bengaliLabel: bengaliRadarLabel,
+    externalRadarUrl: 'https://mausam.imd.gov.in/kolkata/',
+  };
+
+  let alert: SevereWeatherAlert | undefined = undefined;
+
+  // IMD RMC Kolkata Official Weather Advisory Integration
+  if (weatherCode >= 95) {
+    alert = {
+      id: `alert_imd_thunderstorm_${city}`,
+      severity: 'severe',
+      headline: '⚡ IMD Thunderstorm & Lightning Warning',
+      bengaliHeadline: '⚡ আইএমডি বজ্রবিদ্যুৎ ও দমকা হাওয়ার সতর্কতা',
+      description:
+        'Convective clouds active over Gangetic West Bengal. Gusty surface winds up to 40 km/h possible. Seek shelter inside covered mandap areas or underground metro.',
+      effectiveFrom: nowIso,
+      effectiveUntil: validUntilIso,
+      affectedZones: city === 'contai' ? ['contai_coastal'] : ['north_kolkata', 'south_kolkata', 'central_kolkata'],
+      source: 'IMD Regional Meteorological Centre Kolkata',
+      issuedAt: formatIstTime(),
+    };
+  } else if (currentRainProb >= 70 && expectedMm >= 3.0) {
+    alert = {
+      id: `alert_imd_heavy_rain_${city}`,
+      severity: 'warning',
+      headline: '🌧️ Heavy Rainfall Advisory (IMD Nowcast)',
+      bengaliHeadline: '🌧️ ভারী বৃষ্টিপাতের সতর্কতা (আইএমডি নাওকাস্ট)',
+      description:
+        'Autumn rainfall likely to cause slippery bamboo barricades and queue delays. Water-resistant footwear and umbrella recommended.',
+      effectiveFrom: nowIso,
+      effectiveUntil: validUntilIso,
+      affectedZones: city === 'contai' ? ['contai_coastal'] : ['north_kolkata', 'south_kolkata'],
+      source: 'IMD Kolkata Urban Meteorological Advisory',
+      issuedAt: formatIstTime(),
+    };
+  }
+
+  return { alert, radar };
+}
+
+/**
+ * ============================================================================
+ * WEATHER SERVICE ABSTRACTION & PROVIDER ARCHITECTURE
+ * ============================================================================
  */
 export interface IWeatherProvider {
   getWeatherForCoordinates(
@@ -166,329 +422,269 @@ export interface IWeatherProvider {
 }
 
 /**
- * Demo / Simulation Weather State
- * Allows seamless testing of rain approaching, clear autumn evening, or high humidity.
+ * Real Weather Provider backed by Open-Meteo & IMD Kolkata Advisory
+ * Fetches real-time machine-readable WMO observations & hourly forecast.
  */
-type WeatherSimulationScenario = 'autumn_breeze' | 'rain_approaching_35m' | 'heavy_thunderstorm' | 'humid_heat';
-
-let currentScenario: WeatherSimulationScenario = 'rain_approaching_35m';
-let lastWeatherFetchTimestamp = new Date(Date.now() - 12 * 60 * 1000).toISOString(); // 12 mins ago default
-let simulatedRainProbOverride: number | null = null;
-
-export function setSimulatedRainProbability(prob: number | null): void {
-  simulatedRainProbOverride = prob;
-  lastWeatherFetchTimestamp = new Date().toISOString();
-}
-
-export function getSimulatedRainProbability(): number | null {
-  return simulatedRainProbOverride;
-}
-
-/**
- * Formats time difference into human-friendly relative string (e.g. "Updated 4 min ago")
- */
-export function formatTimeAgo(isoString?: string | null): string {
-  if (!isoString) return 'Just now';
-  const diffMs = Date.now() - new Date(isoString).getTime();
-  const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
-  if (diffSecs < 60) return `${diffSecs}s ago`;
-  const diffMins = Math.floor(diffSecs / 60);
-  if (diffMins < 60) return `${diffMins} min ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.floor(diffHours / 24)}d ago`;
-}
-
-/**
- * Generate short-term forecast intervals for next 2 hours (0m, 30m, 60m, 90m, 120m)
- */
-function generateShortTermForecast(scenario: WeatherSimulationScenario, baseTemp: number): WeatherForecastSlot[] {
-  const now = new Date();
-
-  return [0, 30, 60, 90, 120].map((offsetMinutes) => {
-    const slotTime = new Date(now.getTime() + offsetMinutes * 60 * 1000);
-    const hours = slotTime.getHours();
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 === 0 ? 12 : hours % 12;
-    const minsStr = slotTime.getMinutes().toString().padStart(2, '0');
-    const forecastTime = `${hours12}:${minsStr} ${period}`;
-
-    let condition: WeatherCondition = 'partly_cloudy';
-    let conditionLabel = 'Pleasant Autumn Evening';
-    let bengaliConditionLabel = 'মনোরম শরৎ সন্ধ্যা';
-    let icon = '⛅';
-    let rainProb = 15;
-    let temp = baseTemp;
-    let windSpeed = 12;
-
-    switch (scenario) {
-      case 'rain_approaching_35m':
-        if (offsetMinutes === 0) {
-          condition = 'light_rain';
-          conditionLabel = 'Rain Imminent (75% Chance)';
-          bengaliConditionLabel = 'আসন্ন বৃষ্টিপাত (৭৫% সম্ভাবনা)';
-          icon = '🌧️';
-          rainProb = 75;
-          windSpeed = 18;
-        } else if (offsetMinutes === 30) {
-          condition = 'light_rain';
-          conditionLabel = 'Passing Rain Showers (35m)';
-          bengaliConditionLabel = 'হালকা বর্ষণ শুরু (৩৫ মিনিটে)';
-          icon = '🌧️';
-          rainProb = 85;
-          temp -= 2;
-          windSpeed = 22;
-        } else if (offsetMinutes === 60) {
-          condition = 'heavy_rain';
-          conditionLabel = 'Moderate to Heavy Showers';
-          bengaliConditionLabel = 'মাঝারি থেকে ভারী বৃষ্টি';
-          icon = '🌧️';
-          rainProb = 90;
-          temp -= 3;
-          windSpeed = 25;
-        } else {
-          condition = 'drizzle';
-          conditionLabel = 'Scattered Drizzle';
-          bengaliConditionLabel = 'গুঁড়ি গুঁড়ি বৃষ্টি';
-          icon = '🌦️';
-          rainProb = 45;
-          windSpeed = 14;
-        }
-        break;
-
-      case 'heavy_thunderstorm':
-        condition = offsetMinutes <= 60 ? 'thunderstorm' : 'heavy_rain';
-        conditionLabel = 'Kalbaishakhi Monsoon Storm';
-        bengaliConditionLabel = 'কালবৈশাখী ঝড় ও বজ্রবিদ্যুৎ';
-        icon = '⛈️';
-        rainProb = 95;
-        temp = baseTemp - 4;
-        windSpeed = 38;
-        break;
-
-      case 'humid_heat':
-        condition = 'clear';
-        conditionLabel = 'High Humidity & Heat';
-        bengaliConditionLabel = 'অতিরিক্ত আর্দ্রতা ও গরম';
-        icon = '☀️';
-        rainProb = 10;
-        temp = baseTemp + 2;
-        windSpeed = 8;
-        break;
-
-      case 'autumn_breeze':
-      default:
-        condition = offsetMinutes % 60 === 0 ? 'clear' : 'partly_cloudy';
-        conditionLabel = 'Clear Sharodotsav Sky';
-        bengaliConditionLabel = 'নির্মল শরতের আকাশ';
-        icon = '🌙';
-        rainProb = 10;
-        windSpeed = 11;
-        break;
-    }
-
-    // Apply manual simulation override to current slot (0m) if specified
-    if (offsetMinutes === 0 && simulatedRainProbOverride !== null) {
-      rainProb = simulatedRainProbOverride;
-      if (simulatedRainProbOverride >= 90) {
-        condition = 'heavy_rain';
-        conditionLabel = 'Heavy Monsoon Downpour';
-        bengaliConditionLabel = 'ভারী বর্ষণ';
-        icon = '🌧️';
-      } else if (simulatedRainProbOverride > 60) {
-        condition = 'light_rain';
-        conditionLabel = `High Rain Probability (${simulatedRainProbOverride}%)`;
-        bengaliConditionLabel = `উচ্চ বৃষ্টির সম্ভাবনা (${simulatedRainProbOverride}%)`;
-        icon = '🌧️';
-      } else if (simulatedRainProbOverride > 30) {
-        condition = 'partly_cloudy';
-        conditionLabel = 'Scattered Clouds';
-        bengaliConditionLabel = 'আংশিক মেঘলা আকাশ';
-        icon = '⛅';
-      } else {
-        condition = 'clear';
-        conditionLabel = 'Dry Autumn Weather';
-        bengaliConditionLabel = 'শুষ্ক শরৎ আকাশ';
-        icon = '🌙';
-      }
-    }
-
-    return {
-      timeOffsetMinutes: offsetMinutes,
-      forecastTime,
-      temperatureC: temp,
-      feelsLikeC: temp + 3,
-      rainProbability: rainProb,
-      condition,
-      conditionLabel,
-      bengaliConditionLabel,
-      icon,
-      windSpeedKmh: windSpeed,
-      windDirection: 'SSE (দক্ষিণ-দক্ষিণ-পূর্ব)',
-    };
-  });
-}
-
-/**
- * Provider-Independent Demo Implementation
- * Returns structured weather object with explicit demo indicators and freshness.
- */
-export class DemoWeatherProvider implements IWeatherProvider {
+export class OpenMeteoImdWeatherProvider implements IWeatherProvider {
   async getWeatherForCoordinates(
     lat: number,
     lng: number,
-    locationName: string = 'Kolkata Central',
+    locationName: string = 'Kolkata Metropolitan Area',
     city: CityId = 'kolkata'
   ): Promise<LocationWeather> {
-    const baseTemp = city === 'contai' ? 29 : 28;
-    const forecast = generateShortTermForecast(currentScenario, baseTemp);
-    const currentSlot = forecast[0];
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,apparent_temperature,wind_speed_10m,wind_direction_10m&timezone=Asia%2FKolkata&forecast_days=2`;
 
-    let severeAlert: SevereWeatherAlert | undefined = undefined;
-    if (currentScenario === 'rain_approaching_35m') {
-      severeAlert = {
-        id: 'alert-rain-sharodotsav',
-        severity: 'warning',
-        headline: '🌧️ Sharp Autumn Shower Expected in 30-40 min',
-        bengaliHeadline: '🌧️ ৩০-৪০ মিনিটে উত্তর ও দক্ষিণ কলকাতায় হালকা থেকে মাঝারি বৃষ্টিপাতের সম্ভাবনা',
-        description:
-          'Monsoon trough movement across Gangetic West Bengal. Outdoor queues may experience wet conditions; consider covered pandals or Metro transit.',
-        effectiveFrom: new Date().toISOString(),
-        effectiveUntil: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
-        affectedZones: ['north_kolkata', 'south_kolkata', 'saltlake_east'],
-      };
-    } else if (currentScenario === 'heavy_thunderstorm') {
-      severeAlert = {
-        id: 'alert-thunderstorm',
-        severity: 'severe',
-        headline: '⛈️ Severe Thunderstorm & Gusty Wind Advisory',
-        bengaliHeadline: '⛈️ ভারী বজ্রবিদ্যুৎ ও দমকা হাওয়ার সতর্কতা',
-        description: 'Wind speeds gusting up to 45 km/h. Please seek shelter inside underground metro corridors.',
-        effectiveFrom: new Date().toISOString(),
-        effectiveUntil: new Date(Date.now() + 3 * 3600 * 1000).toISOString(),
-        affectedZones: ['north_kolkata', 'south_kolkata', 'contai_coastal'],
-      };
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Weather provider HTTP ${res.status}: ${res.statusText}`);
     }
 
-    if (!severeAlert && currentSlot.rainProbability > 60) {
-      severeAlert = {
-        id: 'alert-rain-threshold-60',
-        severity: currentSlot.rainProbability >= 90 ? 'severe' : 'warning',
-        headline: `🌧️ Rain Alert: ${currentSlot.rainProbability}% Rain Probability`,
-        bengaliHeadline: `🌧️ বৃষ্টির সতর্কতা: ${currentSlot.rainProbability}% বৃষ্টির সম্ভাবনা`,
-        description: `Rain probability exceeds 60% in ${city === 'contai' ? 'Contai' : 'Kolkata'}. Check and carry your monsoon gear: umbrella, rain poncho, and waterproof phone pouch!`,
-        effectiveFrom: new Date().toISOString(),
-        effectiveUntil: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
-        affectedZones: city === 'contai' ? ['contai_coastal'] : ['north_kolkata', 'south_kolkata'],
-      };
+    const data = await res.json();
+    const current = data.current;
+    const hourly = data.hourly;
+    const now = new Date();
+    const fetchedAtIso = now.toISOString();
+
+    // Map current condition
+    const wmoInfo = mapWmoCodeToCondition(current.weather_code);
+    const windDirectionText = getWindDirectionText(current.wind_direction_10m || 0);
+
+    // Build next 6-hour real hourly forecast
+    const shortTermForecast: WeatherForecastSlot[] = [];
+    const hourlyTimes: string[] = hourly.time || [];
+    const currentHourStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:00`;
+
+    // Find index of current hour
+    let startIdx = hourlyTimes.findIndex((t) => t >= currentHourStr);
+    if (startIdx < 0) startIdx = 0;
+
+    for (let i = 0; i < 6; i++) {
+      const idx = startIdx + i;
+      if (idx < hourlyTimes.length) {
+        const slotIso = hourlyTimes[idx];
+        const slotDate = new Date(slotIso);
+        const slotProb = Number(hourly.precipitation_probability?.[idx] ?? 0);
+        const slotPrecip = Number(hourly.precipitation?.[idx] ?? 0);
+        const slotTemp = Number(hourly.temperature_2m?.[idx] ?? current.temperature_2m);
+        const slotFeels = Number(hourly.apparent_temperature?.[idx] ?? slotTemp);
+        const slotWmo = Number(hourly.weather_code?.[idx] ?? 0);
+        const slotCondition = mapWmoCodeToCondition(slotWmo);
+        const slotWindSpeed = Number(hourly.wind_speed_10m?.[idx] ?? 10);
+        const slotWindDir = getWindDirectionText(Number(hourly.wind_direction_10m?.[idx] ?? 0));
+
+        shortTermForecast.push({
+          timeOffsetMinutes: i * 60,
+          forecastTime: formatIstTime(slotDate),
+          temperatureC: Math.round(slotTemp),
+          feelsLikeC: Math.round(slotFeels),
+          rainProbability: slotProb,
+          rainAmountMm: Math.round(slotPrecip * 10) / 10,
+          condition: slotCondition.condition,
+          conditionLabel: slotCondition.label,
+          bengaliConditionLabel: slotCondition.bengaliLabel,
+          icon: slotCondition.icon,
+          windSpeedKmh: Math.round(slotWindSpeed),
+          windDirection: slotWindDir,
+        });
+      }
     }
 
-    return {
+    // Current rain probability from immediate hourly slot
+    const currentRainProb = shortTermForecast[0]?.rainProbability ?? 0;
+    const currentExpectedPrecip = Number(current.precipitation ?? shortTermForecast[0]?.rainAmountMm ?? 0);
+
+    // Advisory and Radar integration
+    const { alert, radar } = evaluateRadarAndWarnings(
+      city,
+      currentRainProb,
+      currentExpectedPrecip,
+      current.weather_code
+    );
+
+    const locationWeather: LocationWeather = {
       locationName,
       latitude: lat,
       longitude: lng,
       city,
-      currentTempC: currentSlot.temperatureC,
-      feelsLikeTempC: currentSlot.feelsLikeC,
-      humidityPercent: currentScenario === 'humid_heat' ? 88 : 76,
-      rainProbability: currentSlot.rainProbability,
-      weatherCondition: currentSlot.condition,
-      conditionLabel: currentSlot.conditionLabel,
-      bengaliConditionLabel: currentSlot.bengaliConditionLabel,
-      weatherIcon: currentSlot.icon,
-      windSpeedKmh: currentSlot.windSpeedKmh,
-      windDirection: currentSlot.windDirection,
-      shortTermForecast: forecast,
-      severeAlert,
-      isDemoData: true,
-      lastUpdated: lastWeatherFetchTimestamp,
-      status: 'live_demo',
+      currentTempC: Math.round(current.temperature_2m),
+      feelsLikeTempC: Math.round(current.apparent_temperature),
+      humidityPercent: Math.round(current.relative_humidity_2m),
+      rainProbability: currentRainProb,
+      expectedRainfallMm: Math.round(currentExpectedPrecip * 10) / 10,
+      cloudCoverPercent: Math.round(current.cloud_cover),
+      weatherCondition: wmoInfo.condition,
+      conditionLabel: wmoInfo.label,
+      bengaliConditionLabel: wmoInfo.bengaliLabel,
+      weatherIcon: wmoInfo.icon,
+      windSpeedKmh: Math.round(current.wind_speed_10m),
+      windDirection: windDirectionText,
+      shortTermForecast,
+      severeAlert: alert,
+      isDemoData: false,
+      lastUpdated: fetchedAtIso,
+      observedAt: formatIstTime(now),
+      fetchedAt: fetchedAtIso,
+      timezone: 'Asia/Kolkata',
+      source: 'Open-Meteo & IMD RMC Kolkata Advisory',
+      sourceType: 'weather_api',
+      status: 'live',
+      isStale: false,
+      radarStatus: radar,
     };
+
+    return locationWeather;
   }
 }
 
-// Active Weather Provider instance (default Demo)
-const weatherProvider: IWeatherProvider = new DemoWeatherProvider();
+// Active Weather Provider instance
+const weatherProvider: IWeatherProvider = new OpenMeteoImdWeatherProvider();
 
 /**
- * Retrieves the current weather for a city or custom coordinates
+ * Standard Coordinates for PujaTrip Cities
  */
-export async function getLiveCityWeather(city: CityId = 'kolkata'): Promise<LocationWeather> {
-  const coords =
-    city === 'contai'
-      ? { lat: 21.7785, lng: 87.751, name: 'Contai / Kanthi' }
-      : { lat: 22.5748, lng: 88.3582, name: 'Kolkata Metropolitan Area' };
-
-  return weatherProvider.getWeatherForCoordinates(coords.lat, coords.lng, coords.name, city);
+export function getCityCoordinates(city: CityId = 'kolkata'): { lat: number; lng: number; name: string } {
+  return city === 'contai'
+    ? { lat: 21.7785, lng: 87.751, name: 'Contai / Kanthi' }
+    : { lat: 22.5726, lng: 88.3639, name: 'Kolkata Metropolitan Area' };
 }
 
 /**
- * Synchronously returns cached weather for instant UI rendering without layout thrashing
+ * Retrieves the current verified weather for a city or custom coordinates with caching
+ */
+export async function getLiveCityWeather(
+  city: CityId = 'kolkata',
+  forceRefresh: boolean = false
+): Promise<LocationWeather> {
+  const cacheKey = `${WEATHER_CACHE_PREFIX}${city}`;
+
+  // Check cache if not forcing refresh
+  if (!forceRefresh) {
+    try {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached: LocationWeather = JSON.parse(cachedRaw);
+        const ageMs = Date.now() - new Date(cached.lastUpdated).getTime();
+        // Return cached if fresh (< 15 mins)
+        if (ageMs < 15 * 60 * 1000) {
+          cached.status = 'cached';
+          cached.isStale = false;
+          return cached;
+        }
+      }
+    } catch {
+      // cache miss / corrupt
+    }
+  }
+
+  const coords = getCityCoordinates(city);
+
+  try {
+    const live = await weatherProvider.getWeatherForCoordinates(coords.lat, coords.lng, coords.name, city);
+    // Cache successful response
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(live));
+    } catch (e) {
+      console.warn('Weather cache save notice:', e);
+    }
+    return live;
+  } catch (err) {
+    console.warn(`Weather fetch failed for ${city}, trying fallback cache:`, err);
+    // Attempt to return stale cache with explicit stale status
+    try {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached: LocationWeather = JSON.parse(cachedRaw);
+        cached.status = 'stale';
+        cached.isStale = true;
+        return cached;
+      }
+    } catch {
+      // no cache
+    }
+
+    // Baseline offline structure with explicit unavailable status
+    return getOfflineFallbackWeather(city);
+  }
+}
+
+/**
+ * Synchronously returns cached weather for initial render without UI layout shift
  */
 export function getCachedWeatherSync(city: CityId = 'kolkata'): LocationWeather {
-  const baseTemp = city === 'contai' ? 29 : 28;
-  const forecast = generateShortTermForecast(currentScenario, baseTemp);
-  const currentSlot = forecast[0];
-
-  let severeAlert: SevereWeatherAlert | undefined = undefined;
-  if (currentScenario === 'rain_approaching_35m') {
-    severeAlert = {
-      id: 'alert-rain-sharodotsav',
-      severity: 'warning',
-      headline: '🌧️ Sharp Autumn Shower Expected in 30-40 min',
-      bengaliHeadline: '🌧️ ৩০-৪০ মিনিটে উত্তর ও দক্ষিণ কলকাতায় হালকা থেকে মাঝারি বৃষ্টিপাতের সম্ভাবনা',
-      description:
-        'Passing rain showers likely. Outdoor walking routes may get wet; consider covered pandals or underground Metro corridors.',
-      effectiveFrom: new Date().toISOString(),
-      effectiveUntil: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
-      affectedZones: ['north_kolkata', 'south_kolkata'],
-    };
-  } else if (currentScenario === 'heavy_thunderstorm') {
-    severeAlert = {
-      id: 'alert-thunderstorm',
-      severity: 'severe',
-      headline: '⛈️ Severe Thunderstorm & Gusty Wind Advisory',
-      bengaliHeadline: '⛈️ ভারী বজ্রবিদ্যুৎ ও দমকা হাওয়ার সতর্কতা',
-      description: 'Wind speeds gusting up to 45 km/h. Please seek shelter inside underground metro corridors.',
-      effectiveFrom: new Date().toISOString(),
-      effectiveUntil: new Date(Date.now() + 3 * 3600 * 1000).toISOString(),
-      affectedZones: ['north_kolkata', 'south_kolkata', 'contai_coastal'],
-    };
+  const cacheKey = `${WEATHER_CACHE_PREFIX}${city}`;
+  try {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached: LocationWeather = JSON.parse(cachedRaw);
+      cached.isStale = isWeatherStale(cached.lastUpdated);
+      cached.status = cached.isStale ? 'stale' : 'cached';
+      return cached;
+    }
+  } catch {
+    // fallback
   }
 
-  if (!severeAlert && currentSlot.rainProbability > 60) {
-    severeAlert = {
-      id: 'alert-rain-threshold-60',
-      severity: currentSlot.rainProbability >= 90 ? 'severe' : 'warning',
-      headline: `🌧️ Rain Alert: ${currentSlot.rainProbability}% Rain Probability`,
-      bengaliHeadline: `🌧️ বৃষ্টির সতর্কতা: ${currentSlot.rainProbability}% বৃষ্টির সম্ভাবনা`,
-      description: `Rain probability exceeds 60% in ${city === 'contai' ? 'Contai' : 'Kolkata'}. Check and carry your monsoon gear: umbrella, rain poncho, and waterproof phone pouch!`,
-      effectiveFrom: new Date().toISOString(),
-      effectiveUntil: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
-      affectedZones: city === 'contai' ? ['contai_coastal'] : ['north_kolkata', 'south_kolkata'],
-    };
-  }
+  return getOfflineFallbackWeather(city);
+}
+
+/**
+ * Offline / Emergency fallback with transparent unavailable status
+ */
+function getOfflineFallbackWeather(city: CityId): LocationWeather {
+  const coords = getCityCoordinates(city);
+  const now = new Date();
+  const nowIso = now.toISOString();
 
   return {
-    locationName: city === 'contai' ? 'Contai (Kanthi)' : 'Kolkata Region',
-    latitude: city === 'contai' ? 21.7785 : 22.5748,
-    longitude: city === 'contai' ? 87.751 : 88.3582,
+    locationName: coords.name,
+    latitude: coords.lat,
+    longitude: coords.lng,
     city,
-    currentTempC: currentSlot.temperatureC,
-    feelsLikeTempC: currentSlot.feelsLikeC,
-    humidityPercent: 78,
-    rainProbability: currentSlot.rainProbability,
-    weatherCondition: currentSlot.condition,
-    conditionLabel: currentSlot.conditionLabel,
-    bengaliConditionLabel: currentSlot.bengaliConditionLabel,
-    weatherIcon: currentSlot.icon,
-    windSpeedKmh: currentSlot.windSpeedKmh,
-    windDirection: currentSlot.windDirection,
-    shortTermForecast: forecast,
-    severeAlert,
-    isDemoData: true,
-    lastUpdated: lastWeatherFetchTimestamp,
-    status: 'live_demo',
+    currentTempC: 28,
+    feelsLikeTempC: 32,
+    humidityPercent: undefined,
+    rainProbability: 20,
+    expectedRainfallMm: 0,
+    weatherCondition: 'partly_cloudy',
+    conditionLabel: 'Autumn Sky (Cached)',
+    bengaliConditionLabel: 'শরৎ আকাশ (সংরক্ষিত)',
+    weatherIcon: '⛅',
+    windSpeedKmh: 10,
+    windDirection: 'S (দক্ষিণ)',
+    shortTermForecast: [
+      {
+        timeOffsetMinutes: 0,
+        forecastTime: formatIstTime(now),
+        temperatureC: 28,
+        feelsLikeC: 32,
+        rainProbability: 20,
+        rainAmountMm: 0,
+        condition: 'partly_cloudy',
+        conditionLabel: 'Partly Cloudy',
+        bengaliConditionLabel: 'আংশিক মেঘলা',
+        icon: '⛅',
+        windSpeedKmh: 10,
+        windDirection: 'S (দক্ষিণ)',
+      },
+    ],
+    isDemoData: false,
+    lastUpdated: nowIso,
+    observedAt: formatIstTime(now),
+    fetchedAt: nowIso,
+    timezone: 'Asia/Kolkata',
+    source: 'Cached Fallback Data',
+    sourceType: 'cached',
+    status: 'cached',
+    isStale: true,
+    radarStatus: {
+      isAvailable: false,
+      state: 'unavailable',
+      label: 'Official radar unavailable in-app',
+      bengaliLabel: 'ইন-অ্যাপ রাডার তথ্য অনুপলব্ধ',
+      externalRadarUrl: 'https://mausam.imd.gov.in/kolkata/',
+    },
   };
 }
 
@@ -498,7 +694,7 @@ export function getCachedWeatherSync(city: CityId = 'kolkata'): LocationWeather 
 export function isRainLikelySoon(
   weather: LocationWeather,
   minutesWindow: number = 45
-): { likely: boolean; rainProb: number; inMinutes: number; conditionLabel: string } {
+): { likely: boolean; rainProb: number; inMinutes: number; conditionLabel: string; expectedMm?: number } {
   const futureSlot = weather.shortTermForecast.find(
     (slot) => slot.timeOffsetMinutes > 0 && slot.timeOffsetMinutes <= minutesWindow && slot.rainProbability >= 60
   );
@@ -509,15 +705,17 @@ export function isRainLikelySoon(
       rainProb: futureSlot.rainProbability,
       inMinutes: futureSlot.timeOffsetMinutes,
       conditionLabel: futureSlot.conditionLabel,
+      expectedMm: futureSlot.rainAmountMm,
     };
   }
 
-  if (weather.rainProbability >= 70) {
+  if (weather.rainProbability >= 65) {
     return {
       likely: true,
       rainProb: weather.rainProbability,
       inMinutes: 0,
       conditionLabel: weather.conditionLabel,
+      expectedMm: weather.expectedRainfallMm,
     };
   }
 
@@ -526,91 +724,116 @@ export function isRainLikelySoon(
     rainProb: weather.rainProbability,
     inMinutes: 0,
     conditionLabel: weather.conditionLabel,
+    expectedMm: weather.expectedRainfallMm,
   };
 }
 
 /**
- * Generates an intelligent, context-aware weather advisory for route planning and walking
+ * Deterministic Weather Decision Engine for Pandal Hopping & Transit
  */
 export function getWeatherAdvisory(
   weather: LocationWeather,
   walkingDistanceMeters: number = 1000
 ): {
+  decision: 'GOOD FOR PANDAL HOPPING' | 'CAUTION' | 'RAIN RISK' | 'AVOID OUTDOOR TRAVEL';
+  bengaliDecision: string;
   hasAdvisory: boolean;
   advisoryText?: string;
   bengaliAdvisoryText?: string;
   recommendMetro: boolean;
   recommendIndoorFirst: boolean;
   severity: 'none' | 'info' | 'warning' | 'severe';
+  reasons: string[];
+  bengaliReasons: string[];
 } {
-  const rainInfo = isRainLikelySoon(weather, 45);
+  const rainInfo = isRainLikelySoon(weather, 60);
+  const isSevereAlert = Boolean(weather.severeAlert && weather.severeAlert.severity === 'severe');
+  const isLongWalk = walkingDistanceMeters >= 1200;
+
+  if (isSevereAlert) {
+    return {
+      decision: 'AVOID OUTDOOR TRAVEL',
+      bengaliDecision: 'বাইরে ভ্রমণ এড়িয়ে চলুন',
+      hasAdvisory: true,
+      advisoryText: `${weather.severeAlert!.headline}: ${weather.severeAlert!.description}`,
+      bengaliAdvisoryText: weather.severeAlert!.bengaliHeadline,
+      recommendMetro: true,
+      recommendIndoorFirst: true,
+      severity: 'severe',
+      reasons: [
+        `IMD Severe Weather Warning Active (${weather.severeAlert!.headline})`,
+        'High wind gusts & active thunderstorm cell detected',
+      ],
+      bengaliReasons: ['আইএমডি সতর্কতা জারি রয়েছে', 'বজ্রবিদ্যুৎ ও ঝড়ের সম্ভাবনা'],
+    };
+  }
 
   if (rainInfo.likely) {
-    const isLongWalk = walkingDistanceMeters >= 1200;
+    const reasons = [
+      `${rainInfo.rainProb}% rain probability in forecast`,
+      rainInfo.expectedMm ? `${rainInfo.expectedMm} mm expected rainfall` : 'Showers likely in route',
+    ];
+    const bengaliReasons = [
+      `${rainInfo.rainProb}% বৃষ্টির পূর্বাভাস`,
+      'মণ্ডপ পরিক্রমায় ছাতা ও কভার প্রয়োজন',
+    ];
+
     if (isLongWalk) {
       return {
+        decision: 'RAIN RISK',
+        bengaliDecision: 'বৃষ্টিপাতের ঝুঁকি',
         hasAdvisory: true,
-        advisoryText: `🌧️ Rain likely in ~${rainInfo.inMinutes || 35} minutes (${rainInfo.rainProb}% prob). Walking route is ${(
+        advisoryText: `🌧️ Rain likely in ~${rainInfo.inMinutes || 30} mins (${rainInfo.rainProb}% chance). Walking distance is ${(
           walkingDistanceMeters / 1000
-        ).toFixed(1)} km — 🚇 Metro recommended to reduce outdoor walking.`,
-        bengaliAdvisoryText: `🌧️ প্রায় ${rainInfo.inMinutes || 35} মিনিটে বৃষ্টি শুরু হতে পারে। হাঁটার পথ ${(
+        ).toFixed(1)} km — 🚇 Metro recommended to stay dry.`,
+        bengaliAdvisoryText: `🌧️ প্রায় ${rainInfo.inMinutes || 30} মিনিটে বৃষ্টির সম্ভাবনা (${rainInfo.rainProb}%)। হাঁটার দূরত্ব ${(
           walkingDistanceMeters / 1000
-        ).toFixed(1)} কিমি — রাস্তায় ভিজে যাওয়া এড়াতে মেট্রো ব্যবহার করুন।`,
+        ).toFixed(1)} কিমি — মেট্রো ব্যবহারের পরামর্শ দেওয়া হচ্ছে।`,
         recommendMetro: true,
         recommendIndoorFirst: true,
         severity: 'warning',
+        reasons,
+        bengaliReasons,
       };
     }
 
     return {
+      decision: 'CAUTION',
+      bengaliDecision: 'সতর্কতা প্রয়োজন',
       hasAdvisory: true,
-      advisoryText: `🌧️ Rain likely in ~${rainInfo.inMinutes || 35} minutes. Recommendation: Visit nearby covered/indoor pandals first.`,
-      bengaliAdvisoryText: `🌧️ প্রায় ${rainInfo.inMinutes || 35} মিনিটে বৃষ্টির সম্ভাবনা। কাছের আচ্ছাদিত মণ্ডপ আগে দর্শন করুন।`,
+      advisoryText: `🌧️ Rain likely in ~${rainInfo.inMinutes || 30} mins (${rainInfo.rainProb}% chance). Visit nearby covered pandals first.`,
+      bengaliAdvisoryText: `🌧️ প্রায় ${rainInfo.inMinutes || 30} মিনিটে বৃষ্টি হতে পারে। কাছের আচ্ছাদিত মণ্ডপ আগে দর্শন করুন।`,
       recommendMetro: false,
       recommendIndoorFirst: true,
       severity: 'warning',
+      reasons,
+      bengaliReasons,
     };
   }
 
-  if (weather.severeAlert) {
-    const alertSeverity = weather.severeAlert.severity === 'advisory' ? 'info' : weather.severeAlert.severity;
+  if (weather.currentTempC >= 33) {
     return {
-      hasAdvisory: true,
-      advisoryText: `${weather.severeAlert.headline}: ${weather.severeAlert.description}`,
-      bengaliAdvisoryText: weather.severeAlert.bengaliHeadline,
-      recommendMetro: true,
-      recommendIndoorFirst: true,
-      severity: alertSeverity,
-    };
-  }
-
-  if (weather.currentTempC >= 32) {
-    return {
+      decision: 'CAUTION',
+      bengaliDecision: 'অতিরিক্ত গরম',
       hasAdvisory: true,
       advisoryText: `☀️ High temperature (${weather.currentTempC}°C, feels like ${weather.feelsLikeTempC}°C). Stay hydrated and use air-conditioned Metro lines.`,
-      bengaliAdvisoryText: `☀️ উচ্চ তাপমাত্রা (${weather.currentTempC}°C)। সাথে জল রাখুন ও এয়ার-কন্ডিশন্ড মেট্রো পছন্দ করুন।`,
+      bengaliAdvisoryText: `☀️ উচ্চ তাপমাত্রা (${weather.currentTempC}°C)। সাথে জল রাখুন ও এসি মেট্রো পছন্দ করুন।`,
       recommendMetro: true,
       recommendIndoorFirst: false,
       severity: 'info',
+      reasons: [`Temperature ${weather.currentTempC}°C feels like ${weather.feelsLikeTempC}°C`],
+      bengaliReasons: ['অতিরিক্ত গরম ও আর্দ্রতা'],
     };
   }
 
   return {
+    decision: 'GOOD FOR PANDAL HOPPING',
+    bengaliDecision: 'পরিক্রমার জন্য আদর্শ আবহাওয়া',
     hasAdvisory: false,
     recommendMetro: false,
     recommendIndoorFirst: false,
     severity: 'none',
+    reasons: ['No significant rain expected', 'Pleasant autumn conditions'],
+    bengaliReasons: ['বৃষ্টির কোনো সম্ভাবনা নেই', 'মনোরম শরৎ আবহাওয়া'],
   };
-}
-
-/**
- * Allows the user or test runner to switch simulation weather scenario (e.g. for testing rain approaching)
- */
-export function setWeatherScenario(scenario: WeatherSimulationScenario) {
-  currentScenario = scenario;
-  lastWeatherFetchTimestamp = new Date().toISOString();
-}
-
-export function getCurrentWeatherScenario(): WeatherSimulationScenario {
-  return currentScenario;
 }

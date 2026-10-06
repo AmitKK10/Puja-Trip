@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { CityId, Pandal, CuratedRoute, UserPreferences } from './types';
+import { CityId, Pandal, CuratedRoute, UserPreferences, SharedTripGroup } from './types';
 import { SAMPLE_PANDALS } from './data/pandalData';
+import { getCommunityPandals } from './services/communityPandalService';
+import {
+  getCurrentUserProfile,
+  fetchUserSquadsFromSupabase,
+} from './services/friendGroupService';
 import { Header } from './components/common/Header';
 import { BottomNav, ScreenTab } from './components/common/BottomNav';
 import { PWAInstallBanner } from './components/common/PWAInstallBanner';
@@ -14,12 +19,36 @@ import { FavoritesScreen } from './components/screens/FavoritesScreen';
 import { GroupScreen } from './components/screens/GroupScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { AboutDeveloperScreen } from './components/screens/AboutDeveloperScreen';
+import { JoinSquadModal } from './components/group/JoinSquadModal';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<ScreenTab>('splash');
   const [activeCity, setActiveCity] = useState<CityId>('kolkata');
   const [pandals, setPandals] = useState<Pandal[]>(SAMPLE_PANDALS);
   const [selectedPandal, setSelectedPandal] = useState<Pandal | null>(null);
+
+  // Load user-created / community pandals from Supabase & local cache on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPandals() {
+      try {
+        const communityPandals = await getCommunityPandals();
+        if (isMounted && communityPandals.length > 0) {
+          setPandals((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const newCommunity = communityPandals.filter((cp) => !existingIds.has(cp.id));
+            return [...newCommunity, ...prev];
+          });
+        }
+      } catch (err) {
+        console.warn('Error loading community pandals:', err);
+      }
+    }
+    loadPandals();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Persistent-like client state for hopping favorites, visited checklist & trip route
   const [favorites, setFavorites] = useState<string[]>([
@@ -49,10 +78,30 @@ export default function App() {
     vipPasses: [],
   });
 
-  // Ingest shareable deep-link if opened via URL query parameters
+  // Dedicated Squad Invite state
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+
+  // Ingest shareable deep-link & invite code if opened via URL query parameters
   useEffect(() => {
     try {
       const searchParams = new URLSearchParams(window.location.search);
+
+      // 1. Detect and parse squad invite parameter (?invite=KP26RY or ?code=KP26RY or ?join=KP26RY)
+      const rawInvite =
+        searchParams.get('invite') || searchParams.get('code') || searchParams.get('join');
+      if (rawInvite) {
+        const clean = rawInvite.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (clean.length >= 4) {
+          setPendingInviteCode(clean);
+          setShowInviteModal(true);
+        }
+      }
+
+      // 2. Load squads from Supabase in background to ensure sync
+      fetchUserSquadsFromSupabase(getCurrentUserProfile().id).catch(() => {});
+
+      // 3. Route deep links
       const deepLinkPandals = searchParams.get('pandals');
       const deepLinkCity = searchParams.get('city') as CityId | null;
       const deepLinkTab = searchParams.get('tab') as ScreenTab | null;
@@ -70,9 +119,41 @@ export default function App() {
         }
       }
     } catch (e) {
-      console.warn('Could not parse route deep-link', e);
+      console.warn('Could not parse route or invite deep-link', e);
     }
   }, []);
+
+  const handleSquadJoined = (group: SharedTripGroup) => {
+    setShowInviteModal(false);
+    setPendingInviteCode(null);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('invite');
+      url.searchParams.delete('code');
+      url.searchParams.delete('join');
+      window.history.replaceState({}, document.title, url.toString());
+    } catch (e) {
+      // ignore
+    }
+    if (group.trip.city && (group.trip.city === 'kolkata' || group.trip.city === 'contai')) {
+      handleCityChange(group.trip.city);
+    }
+    setCurrentTab('group');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCloseInviteModal = () => {
+    setShowInviteModal(false);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('invite');
+      url.searchParams.delete('code');
+      url.searchParams.delete('join');
+      window.history.replaceState({}, document.title, url.toString());
+    } catch (e) {
+      // ignore
+    }
+  };
 
   // Handle City Change
   const handleCityChange = (newCity: CityId) => {
@@ -111,6 +192,14 @@ export default function App() {
   // Select Pandal to view details
   const handleSelectPandal = (pandal: Pandal) => {
     setSelectedPandal(pandal);
+    setCurrentTab('detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Handle user-created custom pandal
+  const handlePandalCreated = (newPandal: Pandal) => {
+    setPandals((prev) => [newPandal, ...prev.filter((p) => p.id !== newPandal.id)]);
+    setSelectedPandal(newPandal);
     setCurrentTab('detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -201,6 +290,7 @@ export default function App() {
             onToggleTripPandal={handleToggleTripPandal}
             onToggleVisited={handleToggleVisited}
             onSelectPandal={handleSelectPandal}
+            onPandalCreated={handlePandalCreated}
             userPrefs={userPrefs}
           />
         )}
@@ -319,6 +409,17 @@ export default function App() {
         visitedCount={visitedList.length}
         userPrefs={userPrefs}
       />
+
+      {/* Global Deep-Link Join Squad Modal */}
+      {showInviteModal && pendingInviteCode && (
+        <JoinSquadModal
+          initialInviteCode={pendingInviteCode}
+          currentUser={getCurrentUserProfile()}
+          onJoined={handleSquadJoined}
+          onClose={handleCloseInviteModal}
+          userPrefs={userPrefs}
+        />
+      )}
     </div>
   );
 }

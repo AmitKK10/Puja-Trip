@@ -31,6 +31,8 @@ import {
   getAllGroupMemberLocations,
   detectNearbyPandalForDarshan,
   getLocationSharingSettings,
+  startLocationSharing,
+  stopLocationSharing,
   subscribeToLiveLocationBroadcasts,
   seedDemoSquadLocationsIfEmpty,
 } from '../../services/groupLocationService';
@@ -42,9 +44,11 @@ import {
   findNearestEssentialPlaces,
 } from '../../services/safetyAndUtilitiesService';
 import { ESSENTIAL_CATEGORY_CONFIG } from '../../data/essentialPlacesData';
-import { latLngToMapCoordinates } from '../../utils/geoUtils';
+import { latLngToMapCoordinates, formatTimeAgo } from '../../utils/geoUtils';
 import { LocationSharingBar } from '../group/LocationSharingBar';
 import { FriendDetailModal } from '../group/FriendDetailModal';
+import { SquadMemberDetailSheet } from '../group/SquadMemberDetailSheet';
+import { LocationConsentModal } from '../group/LocationConsentModal';
 import { SuggestedMeetingPointCard } from '../group/SuggestedMeetingPointCard';
 import { PandalProximityBanner } from '../group/PandalProximityBanner';
 import { ActiveSOSAlertBanner } from '../common/ActiveSOSAlertBanner';
@@ -55,7 +59,7 @@ import { LostGroupModal } from '../common/LostGroupModal';
 import { EmergencyInformationModal } from '../common/EmergencyInformationModal';
 import { CrowdDensityVisualIndicator, getCrowdDensityInfo } from '../pandal/CrowdDensityVisualIndicator';
 import { handleImageError } from '../../utils/imageFallback';
-import { playKanshorBell } from '../../utils/audioSynth';
+import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import {
   MapPin,
   Navigation,
@@ -128,6 +132,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Selected Pandal state
   const [selectedPandalId, setSelectedPandalId] = useState<string>(cityPandals[0]?.id || '');
   const [showPandalSheet, setShowPandalSheet] = useState<boolean>(true);
+
+  // Dedicated Squad Live Mode & Location Consent States
+  const [isSquadLiveMode, setIsSquadLiveMode] = useState<boolean>(false);
+  const [showConsentModal, setShowConsentModal] = useState<boolean>(false);
+  const [consentPermissionError, setConsentPermissionError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Layer toggles
   const [showMetroLines, setShowMetroLines] = useState(true);
@@ -309,12 +319,83 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     return placed;
   }, [displayedPandals, activeTripPandalIds]);
 
-  // Active squad members with valid live GPS
+  // Active squad members with valid live GPS (Do NOT show members who have disabled location sharing)
   const activeFriendsOnMap = useMemo(() => {
     return memberLocations.filter(
-      (m) => m.isSharing && m.status !== 'disabled' && m.latitude !== 0 && m.longitude !== 0
+      (m) =>
+        m.isSharing &&
+        m.status !== 'disabled' &&
+        m.status !== 'location_off' &&
+        m.latitude !== 0 &&
+        m.longitude !== 0
     );
   }, [memberLocations]);
+
+  // Toast auto-dismiss effect
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
+  // SQUAD LIVE Mode Toggle & Explicit Opt-in Handler
+  const handleToggleSquadLiveMode = () => {
+    if (isSquadLiveMode) {
+      setIsSquadLiveMode(false);
+      playKanshorBell(0.4);
+      setToastMessage('Squad Live Tracking mode deactivated.');
+    } else {
+      const settings = getLocationSharingSettings(activeTripId);
+      if (!settings.isSharing) {
+        // Opt-in consent MUST be requested first
+        setShowConsentModal(true);
+      } else {
+        setIsSquadLiveMode(true);
+        setShowFriendsOnMap(true);
+        playDhakHit('dha', 0.8);
+        setToastMessage('🟢 SQUAD LIVE Active: Realtime member tracking enabled.');
+      }
+    }
+  };
+
+  const handleAllowConsent = async () => {
+    setConsentPermissionError(null);
+    const res = await startLocationSharing({
+      tripId: activeTripId,
+      duration: '3h',
+      city: activeCity,
+      onError: (err) => {
+        setConsentPermissionError(err.message);
+      },
+      onLocationUpdate: () => {
+        setConsentPermissionError(null);
+        setShowConsentModal(false);
+        setIsSquadLiveMode(true);
+        setShowFriendsOnMap(true);
+        playDhakHit('dha', 0.9);
+        setToastMessage('✓ Live location sharing active with your Squad!');
+      },
+    });
+
+    if (res.success) {
+      setShowConsentModal(false);
+      setIsSquadLiveMode(true);
+      setShowFriendsOnMap(true);
+      playDhakHit('dha', 0.9);
+      setToastMessage('✓ Live location sharing active with your Squad!');
+    } else if (res.error) {
+      setConsentPermissionError(res.error);
+    }
+  };
+
+  const handleCancelConsent = () => {
+    setShowConsentModal(false);
+    // User chose not to share their own location, but can still view active squad members
+    setIsSquadLiveMode(true);
+    setShowFriendsOnMap(true);
+    setToastMessage('Viewing Squad Map without publishing your location.');
+  };
 
   // Route directional segments
   const routeSegments = useMemo(() => {
@@ -591,6 +672,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         {/* Floating Top Filters Bar (Horizontally scrollable, compact) */}
         <div className="absolute top-3 left-3 right-16 z-20 pointer-events-none">
           <div className="flex items-center gap-1.5 pointer-events-auto bg-white/95 dark:bg-stone-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-stone-200/90 dark:border-stone-800 shadow-sm overflow-x-auto no-scrollbar">
+            {/* Dedicated SQUAD LIVE Control (Requirement 1) */}
+            <button
+              id="btn-squad-live-toggle"
+              onClick={handleToggleSquadLiveMode}
+              className={`px-3 py-1 rounded-xl text-micro font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all shadow-xs cursor-pointer ${
+                isSquadLiveMode
+                  ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white ring-2 ring-emerald-400/60'
+                  : 'bg-white dark:bg-stone-900 text-emerald-800 dark:text-emerald-300 border border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+              }`}
+              title="Switch into Squad Live Tracking Mode"
+            >
+              <Radio className={`w-3.5 h-3.5 ${isSquadLiveMode ? 'text-white animate-pulse' : 'text-emerald-600'}`} />
+              <span>SQUAD LIVE</span>
+              <span className="font-bengali text-[10px] opacity-85">স্কোয়াড লাইভ</span>
+            </button>
+
             <button
               onClick={() => setMapFilter('all')}
               className={`px-2.5 py-1 rounded-xl text-micro font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -666,8 +763,48 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           </div>
         </div>
 
-        {/* Floating Right-Side Controls Stack (My Location, Zoom, Recenter, Layers) */}
+        {/* Active Squad Live Tracking Banner */}
+        {isSquadLiveMode && (
+          <div className="absolute top-14 left-3 right-3 z-20 pointer-events-none flex justify-center">
+            <div className="pointer-events-auto px-3.5 py-1.5 rounded-full bg-emerald-950/90 backdrop-blur-md border border-emerald-500/50 text-emerald-200 text-micro font-bold shadow-xl flex items-center gap-2 animate-fadeIn">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>SQUAD LIVE ACTIVE • {activeFriendsOnMap.length} Hoppers Sharing</span>
+              <button
+                onClick={() => setIsSquadLiveMode(false)}
+                className="ml-1 p-0.5 rounded-full hover:bg-emerald-800 text-emerald-300 cursor-pointer"
+                title="Exit Squad Live Mode"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Transient Toast Notification Banner */}
+        {toastMessage && (
+          <div className="absolute top-22 left-4 right-4 z-40 pointer-events-none flex justify-center">
+            <div className="pointer-events-auto px-4 py-2 rounded-2xl bg-stone-900/95 text-white border border-stone-700 text-micro font-bold shadow-2xl flex items-center gap-2 animate-fadeIn">
+              <span>{toastMessage}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Right-Side Controls Stack (My Location, Zoom, Recenter, Squad Live, Layers) */}
         <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5 pointer-events-auto">
+          {/* Floating SQUAD LIVE Toggle Button */}
+          <button
+            id="floating-squad-live-btn"
+            onClick={handleToggleSquadLiveMode}
+            className={`w-9 h-9 rounded-full backdrop-blur-md shadow-md border flex items-center justify-center transition-all cursor-pointer ${
+              isSquadLiveMode
+                ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-300 animate-pulse'
+                : 'bg-white/95 dark:bg-stone-900/95 border-emerald-500/50 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95'
+            }`}
+            title="Toggle Squad Live Tracking Mode"
+          >
+            <Radio className="w-4 h-4 text-emerald-500" />
+          </button>
+
           <button
             onClick={handleCenterMyLocation}
             className="w-9 h-9 rounded-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md shadow-md border border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-200 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
@@ -1244,7 +1381,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             })}
 
             {/* Live Squad Friends Layer (Visually distinct avatar markers) */}
-            {showFriendsOnMap &&
+            {(showFriendsOnMap || isSquadLiveMode) &&
               activeFriendsOnMap.map((friend) => {
                 const isMe = friend.userId === currentUser.id;
                 const coords = latLngToMapCoordinates(friend.latitude, friend.longitude, activeCity);
@@ -1255,6 +1392,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 const isFriendSOS = activeSOSAlerts.some((s) => s.userId === friend.userId);
                 const isFriendLost = activeLostAlerts.some((l) => l.userId === friend.userId);
 
+                const diffMs = friend.updatedAt
+                  ? Date.now() - new Date(friend.updatedAt).getTime()
+                  : Infinity;
+                const isLive = diffMs <= 60000;
+                const statusText = isLive ? '● LIVE' : formatTimeAgo(friend.updatedAt);
+
                 const ringColor = isFriendSOS
                   ? '#DC2626'
                   : isFriendLost
@@ -1263,30 +1406,36 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   ? '#2563EB'
                   : friend.isStationary
                   ? '#0D9488'
-                  : '#10B981';
+                  : isLive
+                  ? '#10B981'
+                  : '#F59E0B';
 
                 return (
                   <g
                     key={`friend-pin-${friend.userId}`}
-                    onClick={() => setSelectedFriend(friend)}
+                    onClick={() => {
+                      setSelectedFriend(friend);
+                      setShowPandalSheet(false);
+                      playKanshorBell(0.3);
+                    }}
                     className="cursor-pointer transition-transform duration-200 hover:scale-125"
                     style={{ transformOrigin: `${coords.mapX}px ${coords.mapY}px` }}
                   >
-                    {/* Pulsing ring for active tracking */}
+                    {/* Pulsing halo ring for active tracking */}
                     <circle
                       cx={coords.mapX}
                       cy={coords.mapY}
-                      r="4.8"
+                      r="5.4"
                       fill={ringColor}
-                      opacity={isFriendSOS ? '0.6' : '0.25'}
-                      className="animate-ping"
+                      opacity={isLive ? '0.35' : '0.15'}
+                      className={isLive ? 'animate-ping' : ''}
                     />
 
                     {/* Outer Circle Container */}
                     <circle
                       cx={coords.mapX}
                       cy={coords.mapY}
-                      r="3.2"
+                      r="3.4"
                       fill={ringColor}
                       stroke="#FFFFFF"
                       strokeWidth="0.9"
@@ -1295,33 +1444,43 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                     {/* Emoji / Indicator */}
                     <text
                       x={coords.mapX}
-                      y={coords.mapY + 1.0}
+                      y={coords.mapY + 1.1}
                       textAnchor="middle"
-                      fontSize="2.1"
+                      fontSize="2.2"
                     >
                       {isFriendSOS ? '🚨' : isFriendLost ? '🧭' : avatar.emoji}
                     </text>
 
-                    {/* Compact Friend Name Pill with Status Dot */}
+                    {/* Distinctive Member Marker Pill: Avatar, Name, Status (e.g. Amit ● LIVE or Rahul 2 min ago) */}
                     <rect
-                      x={coords.mapX - 7.5}
-                      y={coords.mapY + 4.0}
-                      width="15"
-                      height="2.8"
-                      rx="1.0"
+                      x={coords.mapX - 11}
+                      y={coords.mapY + 4.2}
+                      width="22"
+                      height="4.2"
+                      rx="1.4"
                       fill={isDarkMode ? '#1E171D' : '#FFFFFF'}
                       stroke={ringColor}
-                      strokeWidth="0.4"
+                      strokeWidth="0.5"
                     />
                     <text
                       x={coords.mapX}
                       y={coords.mapY + 6.0}
                       textAnchor="middle"
-                      fill={isFriendSOS ? '#DC2626' : (isDarkMode ? '#FFFFFF' : '#1C1418')}
-                      fontSize="1.5"
+                      fill={isDarkMode ? '#FFFFFF' : '#1C1418'}
+                      fontSize="1.35"
                       fontWeight="bold"
                     >
                       {isMe ? 'You' : friend.userName.split(' ')[0]}
+                    </text>
+                    <text
+                      x={coords.mapX}
+                      y={coords.mapY + 7.5}
+                      textAnchor="middle"
+                      fill={isLive ? '#059669' : '#D97706'}
+                      fontSize="1.0"
+                      fontWeight="bold"
+                    >
+                      {statusText}
                     </text>
                   </g>
                 );
@@ -1329,8 +1488,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           </svg>
         </div>
 
+        {/* Selected Squad Member Floating Bottom Sheet (Requirement 7 & 8) */}
+        {selectedFriend && (
+          <SquadMemberDetailSheet
+            member={selectedFriend}
+            onClose={() => setSelectedFriend(null)}
+            onNavigateToCoords={handleNavigateToCoords}
+            onShowToast={(msg) => setToastMessage(msg)}
+            isDarkMode={isDarkMode}
+          />
+        )}
+
         {/* 3. Selected Pandal Floating Information Card (Clean, compact bottom sheet) */}
-        {activePandal && showPandalSheet && (
+        {activePandal && showPandalSheet && !selectedFriend && (
           <div
             id="map-pandal-floating-card"
             className="absolute bottom-3 left-3 right-3 z-30 animate-slideUp pointer-events-auto"
@@ -1783,17 +1953,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         userPrefs={userPrefs}
       />
 
-      {/* Friend Detail Modal */}
-      {selectedFriend && (
-        <FriendDetailModal
-          memberLocation={selectedFriend}
-          totalTripPandals={cityPandals.length}
-          visitedPandalsCount={5}
-          onFindFriend={handleFindFriend}
-          onClose={() => setSelectedFriend(null)}
-          userPrefs={userPrefs}
-        />
-      )}
+      {/* Location Consent Modal (Requirement 3: Opt-in Consent) */}
+      <LocationConsentModal
+        isOpen={showConsentModal}
+        squadName={activeGroup?.trip.name || 'Puja Hopping Squad'}
+        onAllow={handleAllowConsent}
+        onCancel={handleCancelConsent}
+        isDarkMode={isDarkMode}
+        permissionError={consentPermissionError}
+        onClearError={() => setConsentPermissionError(null)}
+      />
     </div>
   );
 };

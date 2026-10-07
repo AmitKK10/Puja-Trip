@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   SharedTripGroup,
   UserProfile,
   TripMember,
   MemberRole,
+  SquadJoinRequest,
 } from '../../types';
 import {
   addMemberToSquad,
@@ -17,12 +18,20 @@ import {
   searchSquadCandidates,
   approveJoinRequest,
   rejectJoinRequest,
+  getSquadProductionInviteUrl,
+  fetchPendingJoinRequestsForSquad,
 } from '../../services/friendGroupService';
 import {
   getUserDisplayName,
   resolveMemberProfile,
   getInitials,
 } from '../../utils/userProfileHelper';
+import {
+  getLocationSharingSettings,
+  startLocationSharing,
+  stopLocationSharing,
+} from '../../services/groupLocationService';
+import { ContactPickerInviteModal } from './ContactPickerInviteModal';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import {
   X,
@@ -50,6 +59,7 @@ import {
   Shield,
   Compass,
   Clock,
+  Radio,
 } from 'lucide-react';
 
 interface ManageSquadModalProps {
@@ -98,6 +108,57 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
   const [newMemberAvatar, setNewMemberAvatar] = useState('dhunuchi_dancer');
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [addMemberError, setAddMemberError] = useState<string | null>(null);
+
+  // Dedicated Location Sharing State (Requirement 4)
+  const [locationSettings, setLocationSettings] = useState(() =>
+    getLocationSharingSettings(group.trip.id)
+  );
+  const [isLocationUpdating, setIsLocationUpdating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Dedicated Contact Picker Modal (Requirement 9, 10, 11)
+  const [showContactPickerModal, setShowContactPickerModal] = useState(false);
+
+  const handleToggleLocationSharing = async (targetState: boolean) => {
+    setLocationError(null);
+    setIsLocationUpdating(true);
+
+    try {
+      if (!targetState) {
+        // When OFF: stop sending location updates, remove live location, show "Location sharing off"
+        stopLocationSharing(group.trip.id);
+        const updated = getLocationSharingSettings(group.trip.id);
+        setLocationSettings(updated);
+        playKanshorBell(0.4);
+        onShowToast('Location sharing turned off');
+      } else {
+        // When ON: request browser geolocation permission, start location updates, publish securely
+        const res = await startLocationSharing({
+          tripId: group.trip.id,
+          duration: '3h',
+          city: group.trip.city,
+          onError: (err) => {
+            setLocationError(err.message);
+          },
+          onLocationUpdate: () => {
+            const updated = getLocationSharingSettings(group.trip.id);
+            setLocationSettings(updated);
+          },
+        });
+
+        if (res.success) {
+          const updated = getLocationSharingSettings(group.trip.id);
+          setLocationSettings(updated);
+          playDhakHit('dha', 0.8);
+          onShowToast('Sharing live location with Squad');
+        } else {
+          setLocationError(res.error || 'Location permission is required for live tracking.');
+        }
+      }
+    } finally {
+      setIsLocationUpdating(false);
+    }
+  };
 
   // Confirmation dialog states
   const [confirmAction, setConfirmAction] = useState<{
@@ -179,7 +240,7 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
 
   // Copy invite link
   const handleCopyLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}?invite=${group.inviteCode}`;
+    const url = getSquadProductionInviteUrl(group.inviteCode);
     const text = `🎉 Join our Durga Puja hopping squad "${group.trip.name}" on PujaTrip!\nUse invite code: ${group.inviteCode}\nDirect Link: ${url}`;
     navigator.clipboard?.writeText(text);
     setCopiedLink(true);
@@ -190,7 +251,7 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
 
   // Native Web Share API
   const handleNativeShare = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?invite=${group.inviteCode}`;
+    const url = getSquadProductionInviteUrl(group.inviteCode);
     const shareData = {
       title: `${group.trip.name} • PujaTrip Squad`,
       text: `🎉 Join our Durga Puja hopping squad "${group.trip.name}" on PujaTrip!\nInvite code: ${group.inviteCode}`,
@@ -674,6 +735,106 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
           </div>
         )}
 
+        {/* Squad Settings: Dedicated LOCATION SHARING Panel (Requirement 4) */}
+        <div
+          className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
+            isDarkMode ? 'bg-[#241820] border-stone-800' : 'bg-white border-stone-200 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  locationSettings.isSharing
+                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
+                }`}
+              >
+                <Radio className={`w-4 h-4 ${locationSettings.isSharing ? 'animate-pulse' : ''}`} />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-black text-stone-400 block tracking-wider">
+                  Squad Settings
+                </span>
+                <h4 className="font-display font-black text-small text-stone-900 dark:text-white leading-tight">
+                  LOCATION SHARING
+                </h4>
+              </div>
+            </div>
+
+            {/* OFF / ON Toggle Control */}
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-micro font-bold uppercase ${
+                  locationSettings.isSharing
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-stone-400'
+                }`}
+              >
+                {locationSettings.isSharing ? 'ON' : 'OFF'}
+              </span>
+              <button
+                type="button"
+                id="toggle-squad-location-sharing"
+                disabled={isLocationUpdating}
+                onClick={() => handleToggleLocationSharing(!locationSettings.isSharing)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  locationSettings.isSharing ? 'bg-emerald-600' : 'bg-stone-300 dark:bg-stone-700'
+                }`}
+                role="switch"
+                aria-checked={locationSettings.isSharing}
+                title={locationSettings.isSharing ? 'Disable location sharing' : 'Enable location sharing'}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    locationSettings.isSharing ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Status Display & Stop Sharing Button */}
+          <div className="flex items-center justify-between pt-2 border-t border-stone-100 dark:border-stone-800/80 text-micro">
+            <div className="flex items-center gap-1.5 font-medium">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  locationSettings.isSharing ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
+                }`}
+              />
+              <span
+                className={
+                  locationSettings.isSharing
+                    ? 'text-emerald-700 dark:text-emerald-300 font-bold'
+                    : 'text-stone-500'
+                }
+              >
+                {locationSettings.isSharing ? 'Sharing live location' : 'Location sharing off'}
+              </span>
+            </div>
+
+            {locationSettings.isSharing && (
+              <button
+                type="button"
+                id="btn-stop-sharing-immediate"
+                disabled={isLocationUpdating}
+                onClick={() => handleToggleLocationSharing(false)}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-micro font-bold transition-colors cursor-pointer shadow-2xs"
+                title="Stop sending location updates immediately"
+              >
+                Stop Sharing
+              </button>
+            )}
+          </div>
+
+          {locationError && (
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-micro font-semibold flex items-center gap-1.5 animate-fadeIn">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{locationError}</span>
+            </div>
+          )}
+        </div>
+
         {/* Squad Members Section */}
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
@@ -685,20 +846,33 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
             </div>
 
             {isOperatorAdmin && (
-              <button
-                type="button"
-                id="btn-open-add-member"
-                onClick={() => {
-                  setShowAddMemberModal((prev) => !prev);
-                  setAddMemberError(null);
-                  setMemberSearchQuery('');
-                }}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-[#DC2626] hover:brightness-110 active:scale-95 text-white text-micro font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
-                title="Add a friend to this squad"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-[#FEF08A]" />
-                <span>+ Add Member</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  id="btn-add-from-contacts-modal"
+                  onClick={() => setShowContactPickerModal(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-900 text-micro font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                  title="Add squad member from device contacts"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>[ Add from Contacts ]</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-open-add-member"
+                  onClick={() => {
+                    setShowAddMemberModal((prev) => !prev);
+                    setAddMemberError(null);
+                    setMemberSearchQuery('');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-[#DC2626] hover:brightness-110 active:scale-95 text-white text-micro font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                  title="Add a friend to this squad"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-[#FEF08A]" />
+                  <span>+ Add Member</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -709,6 +883,16 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
                 isDarkMode ? 'bg-[#281B23] border-[#F59E0B]/30' : 'bg-amber-50/80 border-amber-300'
               }`}
             >
+              {/* Quick Contacts Integration Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setShowContactPickerModal(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-[#DC2626] hover:brightness-110 active:scale-98 text-white text-micro font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5 text-[#FEF08A]" />
+                <span>[ Add from Contacts ]</span>
+              </button>
+
               <div className="flex items-center justify-between border-b border-amber-300/40 pb-2">
                 <div className="flex items-center gap-1.5">
                   <UserPlus className="w-4 h-4 text-[#DC2626]" />
@@ -1097,6 +1281,16 @@ export const ManageSquadModal: React.FC<ManageSquadModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Contact Picker & Invitation Modal (Requirement 9, 10, 11) */}
+        <ContactPickerInviteModal
+          isOpen={showContactPickerModal}
+          onClose={() => setShowContactPickerModal(false)}
+          squadName={group.trip.name}
+          inviteCode={group.inviteCode}
+          isDarkMode={isDarkMode}
+          onShowToast={onShowToast}
+        />
       </div>
     </div>
   );

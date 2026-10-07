@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { CityId, Pandal, CuratedRoute, UserPreferences, SharedTripGroup } from './types';
+import { CityId, Pandal, CuratedRoute, UserPreferences, SharedTripGroup, UserProfile } from './types';
 import { SAMPLE_PANDALS } from './data/pandalData';
 import { getCommunityPandals } from './services/communityPandalService';
 import {
   getCurrentUserProfile,
   fetchUserSquadsFromSupabase,
+  LOCAL_STORAGE_PENDING_INVITE,
 } from './services/friendGroupService';
 import { Header } from './components/common/Header';
 import { BottomNav, ScreenTab } from './components/common/BottomNav';
@@ -22,7 +23,28 @@ import { AboutDeveloperScreen } from './components/screens/AboutDeveloperScreen'
 import { JoinSquadModal } from './components/group/JoinSquadModal';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<ScreenTab>('splash');
+  // Check if opening an invitation link immediately on load
+  const initialInvite = (() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const raw = searchParams.get('invite') || searchParams.get('code') || searchParams.get('join');
+      if (raw && raw.trim().length >= 4) {
+        const clean = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        localStorage.setItem(LOCAL_STORAGE_PENDING_INVITE, clean);
+        return clean;
+      }
+      const saved = localStorage.getItem(LOCAL_STORAGE_PENDING_INVITE);
+      if (saved && saved.trim().length >= 4) {
+        return saved.trim().toUpperCase();
+      }
+    } catch (e) {}
+    return null;
+  })();
+
+  const [currentTab, setCurrentTab] = useState<ScreenTab>(() => {
+    return initialInvite ? 'group' : 'splash';
+  });
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => getCurrentUserProfile());
   const [activeCity, setActiveCity] = useState<CityId>('kolkata');
   const [pandals, setPandals] = useState<Pandal[]>(SAMPLE_PANDALS);
   const [selectedPandal, setSelectedPandal] = useState<Pandal | null>(null);
@@ -78,9 +100,9 @@ export default function App() {
     vipPasses: [],
   });
 
-  // Dedicated Squad Invite state
-  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
+  // Dedicated Squad Invite state - Detect immediately on load from URL or storage
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(initialInvite);
+  const [showInviteModal, setShowInviteModal] = useState<boolean>(Boolean(initialInvite));
 
   // Ingest shareable deep-link & invite code if opened via URL query parameters
   useEffect(() => {
@@ -93,6 +115,7 @@ export default function App() {
       if (rawInvite) {
         const clean = rawInvite.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         if (clean.length >= 4) {
+          localStorage.setItem(LOCAL_STORAGE_PENDING_INVITE, clean);
           setPendingInviteCode(clean);
           setShowInviteModal(true);
         }
@@ -127,6 +150,7 @@ export default function App() {
     setShowInviteModal(false);
     setPendingInviteCode(null);
     try {
+      localStorage.removeItem(LOCAL_STORAGE_PENDING_INVITE);
       const url = new URL(window.location.href);
       url.searchParams.delete('invite');
       url.searchParams.delete('code');
@@ -144,7 +168,9 @@ export default function App() {
 
   const handleCloseInviteModal = () => {
     setShowInviteModal(false);
+    setPendingInviteCode(null);
     try {
+      localStorage.removeItem(LOCAL_STORAGE_PENDING_INVITE);
       const url = new URL(window.location.href);
       url.searchParams.delete('invite');
       url.searchParams.delete('code');
@@ -229,7 +255,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  if (currentTab === 'splash') {
+  if (currentTab === 'splash' && !showInviteModal && !pendingInviteCode) {
     return <SplashScreen onStartApp={handleStartFromSplash} />;
   }
 
@@ -368,6 +394,8 @@ export default function App() {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             userPrefs={userPrefs}
+            currentUser={currentUser}
+            onUserUpdate={setCurrentUser}
           />
         )}
 
@@ -414,10 +442,14 @@ export default function App() {
       {showInviteModal && pendingInviteCode && (
         <JoinSquadModal
           initialInviteCode={pendingInviteCode}
-          currentUser={getCurrentUserProfile()}
+          currentUser={currentUser}
           onJoined={handleSquadJoined}
           onClose={handleCloseInviteModal}
           userPrefs={userPrefs}
+          onUserSwitch={(newUser) => {
+            setCurrentUser(newUser);
+            fetchUserSquadsFromSupabase(newUser.id).catch(() => {});
+          }}
         />
       )}
     </div>

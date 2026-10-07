@@ -105,6 +105,7 @@ export const DEMO_PROFILES: UserProfile[] = [
   {
     id: 'user_anirban_admin',
     email: 'anirban@pujatrip.app',
+    phoneNumber: '+919830123456',
     displayName: 'Anirban Mukhopadhyay',
     bengaliName: 'অনির্বাণ মুখোপাধ্যায়',
     avatarUrl: 'dhunuchi_dancer',
@@ -117,6 +118,7 @@ export const DEMO_PROFILES: UserProfile[] = [
   {
     id: 'user_sourav_member',
     email: 'sourav@pujatrip.app',
+    phoneNumber: '+919830234567',
     displayName: 'Sourav Ganguly',
     bengaliName: 'সৌরভ গাঙ্গুলী',
     avatarUrl: 'dhaki_drummer',
@@ -129,6 +131,7 @@ export const DEMO_PROFILES: UserProfile[] = [
   {
     id: 'user_sreemoyee_member',
     email: 'sreemoyee@pujatrip.app',
+    phoneNumber: '+919830345678',
     displayName: 'Sreemoyee Sen',
     bengaliName: 'শ্রীময়ী সেন',
     avatarUrl: 'alpana_artist',
@@ -141,6 +144,7 @@ export const DEMO_PROFILES: UserProfile[] = [
   {
     id: 'user_sayantani_member',
     email: 'sayantani@pujatrip.app',
+    phoneNumber: '+919830456789',
     displayName: 'Sayantani Das',
     bengaliName: 'সায়ন্তনী দাস',
     avatarUrl: 'sindoor_khela',
@@ -156,7 +160,7 @@ export const DEMO_PROFILES: UserProfile[] = [
     displayName: 'Debojyoti Roy',
     bengaliName: 'দেবজ্যোতি রায়',
     avatarUrl: 'conch_blower',
-    isLocationSharingEnabled: true,
+    isLocationSharingEnabled: false,
     lastSeenAt: new Date(Date.now() - 25 * 60000).toISOString(),
     isOnline: false,
     createdAt: '2026-08-05T10:00:00Z',
@@ -170,6 +174,31 @@ const LOCAL_STORAGE_VISIT_STATUSES = 'pujatrip_visit_statuses_v1';
 const LOCAL_STORAGE_EXPENSES = 'pujatrip_expenses_v1';
 const LOCAL_STORAGE_CROWD_REPORTS = 'pujatrip_crowd_reports_v1';
 const LOCAL_STORAGE_LIVE_LOCATIONS = 'pujatrip_live_locations_v1';
+export const LOCAL_STORAGE_PENDING_INVITE = 'pujatrip_pending_invite_code';
+export const LOCAL_STORAGE_IS_AUTHENTICATED = 'pujatrip_is_authenticated';
+
+// Actual deployed PujaTrip production domain as required
+export const PUJATRIP_PRODUCTION_BASE_URL = 'https://puja-trip.vercel.app';
+
+/**
+ * Generates the official production invite URL using the deployed PujaTrip URL.
+ * e.g. https://puja-trip.vercel.app/?invite=KP26RY
+ */
+export const getSquadProductionInviteUrl = (inviteCode: string): string => {
+  const clean = (inviteCode || '').trim().toUpperCase();
+  return `${PUJATRIP_PRODUCTION_BASE_URL}/?invite=${encodeURIComponent(clean)}`;
+};
+
+/**
+ * Returns current environment invite link for local dev testing if needed
+ */
+export const getSquadCurrentEnvironmentInviteUrl = (inviteCode: string): string => {
+  const clean = (inviteCode || '').trim().toUpperCase();
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(clean)}`;
+  }
+  return getSquadProductionInviteUrl(inviteCode);
+};
 
 // Cross-tab Realtime Event Bus for local simulation
 const groupBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
@@ -194,16 +223,73 @@ export const generateInviteCode = (city: CityId): string => {
 // USER PROFILE & AUTHENTICATION
 // ============================================================================
 
+export const isUserLoggedIn = (): boolean => {
+  try {
+    const isAuth = localStorage.getItem(LOCAL_STORAGE_IS_AUTHENTICATED);
+    if (isAuth === 'true') return true;
+    const raw = localStorage.getItem(LOCAL_STORAGE_ACTIVE_USER);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.id && parsed.displayName && !parsed.id.startsWith('visitor_')) {
+        return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+};
+
+export const markUserLoggedIn = (profile: UserProfile): void => {
+  saveCurrentUserProfile(profile);
+  try {
+    localStorage.setItem(LOCAL_STORAGE_IS_AUTHENTICATED, 'true');
+  } catch (e) {}
+};
+
+export const markUserLoggedOut = (): void => {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_IS_AUTHENTICATED);
+    localStorage.removeItem(LOCAL_STORAGE_ACTIVE_USER);
+  } catch (e) {}
+};
+
 export const getCurrentUserProfile = (): UserProfile => {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_ACTIVE_USER);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.id && parsed.displayName) {
+        return parsed;
+      }
     }
   } catch (err) {
     console.warn('Error reading active user:', err);
   }
-  // Default to Anirban (Admin)
+
+  // Detect if current browser session is opening an invitation link
+  const isInviteSession =
+    typeof window !== 'undefined' &&
+    (Boolean(localStorage.getItem(LOCAL_STORAGE_PENDING_INVITE)) ||
+      Boolean(new URLSearchParams(window.location.search).get('invite')) ||
+      Boolean(new URLSearchParams(window.location.search).get('code')) ||
+      Boolean(new URLSearchParams(window.location.search).get('join')));
+
+  if (isInviteSession) {
+    // Generate fresh visitor profile so they are treated as an invitee and NOT the squad admin
+    const guestUser: UserProfile = {
+      id: `visitor_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`,
+      displayName: 'Puja Hopper',
+      avatarUrl: 'dhunuchi_dancer',
+      isLocationSharingEnabled: true,
+      lastSeenAt: new Date().toISOString(),
+      isOnline: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveCurrentUserProfile(guestUser);
+    return guestUser;
+  }
+
+  // Default to Anirban (Admin) for regular local exploration
   const defaultUser = DEMO_PROFILES[0];
   saveCurrentUserProfile(defaultUser);
   return defaultUser;
@@ -219,7 +305,7 @@ export const saveCurrentUserProfile = (profile: UserProfile): void => {
 
 export const switchDemoUser = (demoId: string): UserProfile => {
   const target = DEMO_PROFILES.find((p) => p.id === demoId) || DEMO_PROFILES[0];
-  saveCurrentUserProfile(target);
+  markUserLoggedIn(target);
   // Broadcast user switch to other tabs / listeners
   groupBroadcastChannel?.postMessage({
     type: 'USER_SWITCHED',
@@ -838,7 +924,10 @@ export const fetchSquadByInviteCode = async (
   const supabase = getSupabase();
   if (supabase) {
     try {
-      const { data: dbTrip, error: fetchErr } = await supabase
+      let dbTrip: any = null;
+
+      // 1. Primary lookup
+      const { data: tripData, error: fetchErr } = await supabase
         .from('trips')
         .select(`
           *,
@@ -864,8 +953,27 @@ export const fetchSquadByInviteCode = async (
         .eq('invite_code', cleanCode)
         .maybeSingle();
 
-      if (fetchErr) {
-        console.warn('Supabase invite lookup error:', fetchErr);
+      dbTrip = tripData;
+
+      // Fallback query if relation join failed
+      if (!dbTrip) {
+        const { data: rawTrip } = await supabase
+          .from('trips')
+          .select('*')
+          .eq('invite_code', cleanCode)
+          .maybeSingle();
+
+        if (rawTrip) {
+          const [{ data: pRows }, { data: mRows }, { data: reqRows }] = await Promise.all([
+            supabase.from('trip_pandals').select('*').eq('trip_id', rawTrip.id),
+            supabase.from('trip_members').select('*').eq('trip_id', rawTrip.id),
+            supabase.from('trip_join_requests').select('*').eq('trip_id', rawTrip.id),
+          ]);
+          rawTrip.trip_pandals = pRows || [];
+          rawTrip.trip_members = mRows || [];
+          rawTrip.trip_join_requests = reqRows || [];
+          dbTrip = rawTrip;
+        }
       }
 
       if (dbTrip) {
@@ -873,6 +981,7 @@ export const fetchSquadByInviteCode = async (
         const members: TripMember[] = (dbTrip.trip_members || []).map((m: any) => {
           const prof = m.profiles || {};
           const isOwner = Boolean(m.is_owner || dbTrip.created_by === m.user_id);
+          const memberDisplayName = prof.display_name || (isOwner ? 'Squad Admin' : 'Puja Hopper');
           return {
             id: m.id || `mem_${m.user_id}`,
             tripId: dbTrip.id,
@@ -883,9 +992,9 @@ export const fetchSquadByInviteCode = async (
             lastActiveAt: m.last_active_at || new Date().toISOString(),
             profile: {
               id: m.user_id,
-              displayName: prof.display_name || 'Puja Hopper',
+              displayName: memberDisplayName,
               bengaliName: prof.bengali_name,
-              avatarUrl: prof.avatar_url || 'dhunuchi_dancer',
+              avatarUrl: prof.avatar_url || (isOwner ? (dbTrip.emblem || 'dhunuchi_dancer') : 'dhaki_drummer'),
               email: prof.email,
               isLocationSharingEnabled: true,
               lastSeenAt: m.last_active_at || new Date().toISOString(),
@@ -901,15 +1010,20 @@ export const fetchSquadByInviteCode = async (
           .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
           .map((tp: any) => tp.pandal_id);
 
-        // Map join requests
+        // Map join requests with normalized status
         const joinRequests: SquadJoinRequest[] = (dbTrip.trip_join_requests || []).map((r: any) => ({
           id: r.id,
           tripId: r.trip_id,
           userId: r.user_id,
-          userName: r.user_name || 'Member',
+          userName: r.user_name || 'Puja Hopper',
+          userEmail: r.user_email,
           userAvatar: r.user_avatar || 'dhunuchi_dancer',
-          status: r.status,
-          requestedAt: r.requested_at,
+          bengaliName: r.bengali_name,
+          requestedAt: r.requested_at || r.created_at || new Date().toISOString(),
+          createdAt: r.created_at || r.requested_at,
+          reviewedAt: r.reviewed_at,
+          reviewedBy: r.reviewed_by,
+          status: (r.status === 'accepted' ? 'approved' : r.status) as any,
         }));
 
         const sharedTrip: TripPlan = {
@@ -947,6 +1061,16 @@ export const fetchSquadByInviteCode = async (
               isOwner: true,
               joinedAt: dbTrip.created_at,
               lastActiveAt: new Date().toISOString(),
+              profile: {
+                id: dbTrip.created_by,
+                displayName: 'Squad Admin',
+                avatarUrl: dbTrip.emblem || 'dhunuchi_dancer',
+                isLocationSharingEnabled: true,
+                lastSeenAt: new Date().toISOString(),
+                isOnline: true,
+                createdAt: dbTrip.created_at || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
             }
           ],
           myRole: 'member',
@@ -2730,6 +2854,130 @@ export const getVisitHistory = (tripId: string): SharedPandalVisitEvent[] => {
 // SQUAD INVITE SYSTEM & ADMIN APPROVAL
 // ============================================================================
 
+export const fetchPendingJoinRequestsForSquad = async (
+  tripId: string
+): Promise<SquadJoinRequest[]> => {
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('trip_join_requests')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('requested_at', { ascending: false });
+
+      if (!error && data) {
+        const reqs: SquadJoinRequest[] = data.map((r: any) => ({
+          id: r.id,
+          tripId: r.trip_id,
+          userId: r.user_id,
+          userName: r.user_name || 'Puja Hopper',
+          userEmail: r.user_email,
+          userAvatar: r.user_avatar || 'dhunuchi_dancer',
+          bengaliName: r.bengali_name,
+          requestedAt: r.requested_at || r.created_at || new Date().toISOString(),
+          createdAt: r.created_at || r.requested_at,
+          reviewedAt: r.reviewed_at,
+          reviewedBy: r.reviewed_by,
+          status: (r.status === 'accepted' ? 'approved' : r.status) as any,
+        }));
+
+        // Sync into local group cache
+        const groups = getStoredGroups();
+        const g = groups.find((x) => x.trip.id === tripId);
+        if (g) {
+          g.joinRequests = reqs;
+          saveStoredGroups(groups);
+        }
+        return reqs;
+      }
+    } catch (e) {
+      console.warn('Error fetching join requests from Supabase:', e);
+    }
+  }
+
+  // Local fallback
+  const groups = getStoredGroups();
+  const g = groups.find((x) => x.trip.id === tripId);
+  return g?.joinRequests || [];
+};
+
+export const checkJoinRequestStatus = async (
+  tripId: string,
+  userId: string
+): Promise<{
+  isMember: boolean;
+  status: 'pending' | 'approved' | 'rejected' | 'none';
+  reviewedAt?: string;
+  group?: SharedTripGroup;
+}> => {
+  const validUid = ensureValidUuid(userId);
+  const supabase = getSupabase();
+
+  if (supabase) {
+    try {
+      // 1. Check if user is officially in trip_members
+      const { data: memberData } = await supabase
+        .from('trip_members')
+        .select('id, role')
+        .eq('trip_id', tripId)
+        .or(`user_id.eq.${userId},user_id.eq.${validUid}`)
+        .maybeSingle();
+
+      if (memberData) {
+        const res = await fetchSquadByInviteCode(tripId);
+        return { isMember: true, status: 'approved', group: res.group || undefined };
+      }
+
+      // 2. Check trip_join_requests
+      const { data: reqData } = await supabase
+        .from('trip_join_requests')
+        .select('*')
+        .eq('trip_id', tripId)
+        .or(`user_id.eq.${userId},user_id.eq.${validUid}`)
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (reqData) {
+        const norm = (reqData.status === 'accepted' ? 'approved' : reqData.status) as 'pending' | 'approved' | 'rejected';
+        let group: SharedTripGroup | undefined;
+        if (norm === 'approved') {
+          const res = await fetchSquadByInviteCode(tripId);
+          group = res.group || undefined;
+        }
+        return {
+          isMember: norm === 'approved',
+          status: norm,
+          reviewedAt: reqData.reviewed_at,
+          group,
+        };
+      }
+    } catch (err) {
+      console.warn('Error checking join request status:', err);
+    }
+  }
+
+  // Local fallback
+  const groups = getStoredGroups();
+  const target = groups.find((g) => g.trip.id === tripId || g.inviteCode === tripId);
+  if (!target) return { isMember: false, status: 'none' };
+
+  const isMem =
+    target.createdBy === userId ||
+    target.createdBy === validUid ||
+    target.members.some((m) => m.userId === userId || m.userId === validUid);
+  if (isMem) return { isMember: true, status: 'approved', group: target };
+
+  const req = target.joinRequests?.find((r) => r.userId === userId || r.userId === validUid);
+  if (req) {
+    const norm = (req.status === 'accepted' ? 'approved' : req.status) as 'pending' | 'approved' | 'rejected';
+    return { isMember: norm === 'approved', status: norm, reviewedAt: req.reviewedAt, group: target };
+  }
+
+  return { isMember: false, status: 'none' };
+};
+
 export const requestToJoinSquad = async (
   inviteCodeOrToken: string,
   user: UserProfile
@@ -2788,7 +3036,7 @@ export const requestToJoinSquad = async (
   const approvalMode = target.settings?.joinApprovalMode || 'admin_approval';
 
   if (approvalMode === 'open_with_link') {
-    // Instant direct join!
+    // Direct join if open link mode
     const res = await joinTripByInviteCode(target.inviteCode, user);
     return {
       success: Boolean(res.group),
@@ -2798,17 +3046,19 @@ export const requestToJoinSquad = async (
     };
   }
 
-  // 5. Admin approval required: Create real join request
+  // 5. Admin approval required: Create real persistent join request
   const requestId = generateCleanUuid();
+  const now = new Date().toISOString();
   const newRequest: SquadJoinRequest = {
     id: requestId,
     tripId: target.trip.id,
     userId: user.id,
-    userName: user.displayName,
+    userName: user.displayName || 'Puja Hopper',
     userEmail: user.email,
-    userAvatar: user.avatarUrl,
+    userAvatar: user.avatarUrl || 'dhunuchi_dancer',
     bengaliName: user.bengaliName,
-    requestedAt: new Date().toISOString(),
+    requestedAt: now,
+    createdAt: now,
     status: 'pending',
   };
 
@@ -2824,17 +3074,36 @@ export const requestToJoinSquad = async (
   const supabase = getSupabase();
   if (supabase) {
     try {
-      await supabase.from('trip_join_requests').upsert({
+      // Upsert profile in public.profiles first to guarantee foreign key constraint succeeds
+      await supabase.from('profiles').upsert({
+        id: validUid,
+        display_name: user.displayName || 'Puja Hopper',
+        bengali_name: user.bengaliName || null,
+        avatar_url: user.avatarUrl || 'dhunuchi_dancer',
+        email: user.email || null,
+        is_location_sharing_enabled: user.isLocationSharingEnabled ?? true,
+        updated_at: now,
+      });
+
+      // Upsert into trip_join_requests
+      const { error: reqInsertErr } = await supabase.from('trip_join_requests').upsert({
         id: requestId,
         trip_id: target.trip.id,
         user_id: validUid,
-        user_name: user.displayName,
-        user_avatar: user.avatarUrl,
+        user_name: user.displayName || 'Puja Hopper',
+        user_email: user.email || null,
+        user_avatar: user.avatarUrl || 'dhunuchi_dancer',
+        bengali_name: user.bengaliName || null,
         status: 'pending',
-        requested_at: newRequest.requestedAt,
-      });
+        requested_at: now,
+        created_at: now,
+      }, { onConflict: 'trip_id,user_id' });
+
+      if (reqInsertErr) {
+        console.warn('Error saving join request to Supabase:', reqInsertErr);
+      }
     } catch (err) {
-      console.warn('Error saving join request to Supabase:', err);
+      console.warn('Error syncing join request to Supabase:', err);
     }
   }
 
@@ -2853,64 +3122,151 @@ export const approveJoinRequest = async (
   operatorUserId: string
 ): Promise<{ success: boolean; group?: SharedTripGroup; error?: string }> => {
   const groups = getStoredGroups();
-  const target = groups.find((g) => g.trip.id === tripId);
-  if (!target) return { success: false, error: 'Squad not found' };
-
+  let target = groups.find((g) => g.trip.id === tripId);
   const validOpId = ensureValidUuid(operatorUserId);
-  const isOperatorAdmin =
-    target.createdBy === operatorUserId ||
-    target.createdBy === validOpId ||
-    target.members.some((m) => (m.userId === operatorUserId || m.userId === validOpId) && m.role === 'admin');
-  if (!isOperatorAdmin) {
-    return { success: false, error: 'Only squad owner or admin can approve join requests.' };
+
+  if (!target) {
+    const res = await fetchSquadByInviteCode(tripId);
+    target = res.group || undefined;
   }
 
-  const req = target.joinRequests?.find((r) => r.id === requestId);
-  if (!req) return { success: false, error: 'Join request not found' };
-
-  req.status = 'accepted';
-
-  // Add member
-  const addRes = await addMemberToSquad(
-    tripId,
-    {
-      userId: req.userId,
-      name: req.userName,
-      bengaliName: req.bengaliName,
-      emailOrPhone: req.userEmail,
-      avatarUrl: req.userAvatar,
-      role: 'member',
-    },
-    operatorUserId
-  );
-
-  const updatedGroup = addRes.group || target;
-
-  saveStoredGroups(groups);
-
-  const supabase = getSupabase();
-  if (supabase) {
-    try {
-      await supabase.from('trip_join_requests').update({ status: 'accepted' }).eq('id', requestId);
-      await supabase.from('trip_members').upsert({
-        trip_id: tripId,
-        user_id: ensureValidUuid(req.userId),
-        role: 'member',
-        is_owner: false,
-      });
-    } catch (err) {
-      console.warn('Error updating join request in Supabase:', err);
+  // 1. Verify current authenticated user is actually the squad admin
+  if (target) {
+    const isOperatorAdmin =
+      target.createdBy === operatorUserId ||
+      target.createdBy === validOpId ||
+      target.members.some(
+        (m) =>
+          (m.userId === operatorUserId || m.userId === validOpId) &&
+          (m.role === 'admin' || m.isOwner)
+      );
+    if (!isOperatorAdmin) {
+      return {
+        success: false,
+        error: 'Unauthorized: Only squad admins can approve join requests.',
+      };
     }
   }
 
+  const supabase = getSupabase();
+  let dbReq: any = null;
+
+  if (supabase) {
+    try {
+      // 1. Fetch the request from Supabase
+      const { data: reqRow } = await supabase
+        .from('trip_join_requests')
+        .select('*')
+        .eq('id', requestId)
+        .single();
+      dbReq = reqRow;
+
+      if (reqRow) {
+        const requesterUid = ensureValidUuid(reqRow.user_id);
+        const now = new Date().toISOString();
+
+        // 2. Ensure profile exists in public.profiles
+        await supabase.from('profiles').upsert({
+          id: requesterUid,
+          display_name: reqRow.user_name || 'Puja Hopper',
+          avatar_url: reqRow.user_avatar || 'dhunuchi_dancer',
+          email: reqRow.user_email || null,
+          bengali_name: reqRow.bengali_name || null,
+          updated_at: now,
+        });
+
+        // 3. Create member in trip_members
+        await supabase.from('trip_members').upsert({
+          trip_id: tripId,
+          user_id: requesterUid,
+          role: 'member',
+          is_owner: false,
+          joined_at: now,
+          last_active_at: now,
+        }, { onConflict: 'trip_id,user_id' });
+
+        // 4. Update trip_join_requests to approved with reviewer info
+        await supabase
+          .from('trip_join_requests')
+          .update({
+            status: 'approved',
+            reviewed_at: now,
+            reviewed_by: validOpId,
+          })
+          .eq('id', requestId);
+      }
+    } catch (err) {
+      console.warn('Error executing approval in Supabase:', err);
+    }
+  }
+
+  // Load from Supabase if not in local cache
+  if (!target) {
+    const res = await fetchSquadByInviteCode(tripId);
+    target = res.group || undefined;
+  }
+
+  if (target) {
+    if (!target.joinRequests) target.joinRequests = [];
+    const req = target.joinRequests.find((r) => r.id === requestId);
+    const reqUserId = req?.userId || dbReq?.user_id;
+    const reqName = req?.userName || dbReq?.user_name || 'Puja Hopper';
+    const reqAvatar = req?.userAvatar || dbReq?.user_avatar || 'dhunuchi_dancer';
+    const reqEmail = req?.userEmail || dbReq?.user_email;
+    const reqBengaliName = req?.bengaliName || dbReq?.bengali_name;
+
+    if (req) {
+      req.status = 'approved';
+      req.reviewedAt = new Date().toISOString();
+      req.reviewedBy = operatorUserId;
+    }
+
+    if (reqUserId && !target.members.some((m) => m.userId === reqUserId)) {
+      target.members.push({
+        id: `mem_${reqUserId}`,
+        tripId: target.trip.id,
+        userId: reqUserId,
+        role: 'member',
+        isOwner: false,
+        joinedAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+        profile: {
+          id: reqUserId,
+          displayName: reqName,
+          bengaliName: reqBengaliName,
+          avatarUrl: reqAvatar,
+          email: reqEmail,
+          isLocationSharingEnabled: true,
+          lastSeenAt: new Date().toISOString(),
+          isOnline: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      target.recentActivities.unshift({
+        id: `act_${Date.now()}`,
+        tripId: target.trip.id,
+        type: 'member_joined',
+        userId: reqUserId,
+        userName: reqName,
+        description: `${reqName} joined the squad!`,
+        bengaliDescription: `${reqName} স্কোয়াডে যোগ দিয়েছেন`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    saveStoredGroups(groups);
+  }
+
   groupBroadcastChannel?.postMessage({
-    type: 'JOIN_REQUEST_ACCEPTED',
+    type: 'JOIN_REQUEST_APPROVED',
     tripId,
     requestId,
-    userId: req.userId,
+    userId: dbReq?.user_id,
   });
 
-  return { success: true, group: updatedGroup };
+  return { success: true, group: target };
 };
 
 export const rejectJoinRequest = async (
@@ -2919,31 +3275,57 @@ export const rejectJoinRequest = async (
   operatorUserId: string
 ): Promise<{ success: boolean; error?: string }> => {
   const groups = getStoredGroups();
-  const target = groups.find((g) => g.trip.id === tripId);
-  if (!target) return { success: false, error: 'Squad not found' };
-
+  let target = groups.find((g) => g.trip.id === tripId);
   const validOpId = ensureValidUuid(operatorUserId);
-  const isOperatorAdmin =
-    target.createdBy === operatorUserId ||
-    target.createdBy === validOpId ||
-    target.members.some((m) => (m.userId === operatorUserId || m.userId === validOpId) && m.role === 'admin');
-  if (!isOperatorAdmin) {
-    return { success: false, error: 'Only squad owner or admin can reject join requests.' };
+
+  if (!target) {
+    const res = await fetchSquadByInviteCode(tripId);
+    target = res.group || undefined;
   }
 
-  const req = target.joinRequests?.find((r) => r.id === requestId);
-  if (req) {
-    req.status = 'rejected';
+  // 1. Verify current authenticated user is actually the squad admin
+  if (target) {
+    const isOperatorAdmin =
+      target.createdBy === operatorUserId ||
+      target.createdBy === validOpId ||
+      target.members.some(
+        (m) =>
+          (m.userId === operatorUserId || m.userId === validOpId) &&
+          (m.role === 'admin' || m.isOwner)
+      );
+    if (!isOperatorAdmin) {
+      return {
+        success: false,
+        error: 'Unauthorized: Only squad admins can reject join requests.',
+      };
+    }
   }
-  saveStoredGroups(groups);
 
   const supabase = getSupabase();
   if (supabase) {
     try {
-      await supabase.from('trip_join_requests').update({ status: 'rejected' }).eq('id', requestId);
+      const now = new Date().toISOString();
+      await supabase
+        .from('trip_join_requests')
+        .update({
+          status: 'rejected',
+          reviewed_at: now,
+          reviewed_by: validOpId,
+        })
+        .eq('id', requestId);
     } catch (err) {
-      console.warn('Error updating join request in Supabase:', err);
+      console.warn('Error rejecting in Supabase:', err);
     }
+  }
+
+  if (target && target.joinRequests) {
+    const req = target.joinRequests.find((r) => r.id === requestId);
+    if (req) {
+      req.status = 'rejected';
+      req.reviewedAt = new Date().toISOString();
+      req.reviewedBy = operatorUserId;
+    }
+    saveStoredGroups(groups);
   }
 
   groupBroadcastChannel?.postMessage({
@@ -3077,10 +3459,6 @@ export const updateSquadSettings = async (
 };
 
 export const generateWhatsAppInviteMessage = (group: SharedTripGroup): string => {
-  const baseUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}`
-      : 'https://pujatrip.app';
-  const joinUrl = `${baseUrl}?invite=${group.inviteCode}`;
-  return `🪔 PujaTrip Squad Invitation\n\nYou have been invited to join:\n[${group.trip.name}]\n\n📍 ${group.trip.city.toUpperCase()}\n\nJoin the squad:\n${joinUrl}\n\nLet's explore Puja together! 🌺`;
+  const joinUrl = getSquadProductionInviteUrl(group.inviteCode);
+  return `🪔 PujaTrip Squad Invitation\n\nYou have been invited to join:\n[${group.trip.name}]\n\n📍 ${group.trip.city.toUpperCase()}\n\nJoin the squad:\n${joinUrl}\n\nLet's explore Durga Puja together! 🌺`;
 };

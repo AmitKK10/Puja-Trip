@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserPreferences } from '../../types';
 import { DurgaThirdEye, AlpanaCorner, AlpanaDivider } from '../common/BengaliMotifs';
+import { DEVELOPER_PHOTO_DATA_URL, DEVELOPER_PHOTO_URL } from '../../data/developerPhoto';
 import {
   ArrowLeft,
   ExternalLink,
@@ -19,6 +20,7 @@ import {
   Facebook,
   Youtube,
   Twitter,
+  MessageCircle,
   Terminal,
   MapPin,
   Calendar,
@@ -39,6 +41,15 @@ export const AboutDeveloperScreen: React.FC<AboutDeveloperScreenProps> = ({
   const isDarkMode = userPrefs.themeMode === 'mahasaptami_night';
 
   const socialLinks = [
+    {
+      name: 'WhatsApp',
+      label: '+91 9563574862',
+      url: 'https://wa.me/919563574862?text=Hello%20Amit%2C%20I%20found%20your%20profile%20through%20PujaTrip.',
+      icon: MessageCircle,
+      color: 'text-emerald-500 dark:text-emerald-400',
+      bgColor: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+      borderColor: 'border-emerald-500/30',
+    },
     {
       name: 'Portfolio',
       label: 'amitkirankar.vercel.app',
@@ -171,17 +182,22 @@ export const AboutDeveloperScreen: React.FC<AboutDeveloperScreenProps> = ({
           <div className="flex items-start gap-4">
             {/* Developer Avatar Badge */}
             <div className="relative shrink-0">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-[#FEF08A] via-[#F59E0B] to-[#DC2626] p-1 shadow-lg flex items-center justify-center">
-                <div className="w-full h-full rounded-[14px] bg-[#2A121A] flex flex-col items-center justify-center text-white border border-amber-300/40">
-                  <span className="font-display font-black text-h1 tracking-tighter text-[#FEF08A]">
-                    AK
-                  </span>
-                  <span className="text-[9px] font-mono tracking-widest text-amber-200 uppercase -mt-1 font-bold">
-                    DEV
-                  </span>
-                </div>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#FEF08A] via-[#F59E0B] to-[#DC2626] p-1 shadow-lg flex items-center justify-center ring-2 ring-amber-300/40">
+                <img
+                  src={DEVELOPER_PHOTO_DATA_URL}
+                  alt="Amit Kiran Kar"
+                  className="w-full h-full rounded-full object-cover object-center shadow-inner border border-amber-200/50"
+                  loading="eager"
+                  onError={(e) => {
+                    // Fallback to static asset url if data url fails
+                    const target = e.currentTarget;
+                    if (target.src !== window.location.origin + DEVELOPER_PHOTO_URL) {
+                      target.src = DEVELOPER_PHOTO_URL;
+                    }
+                  }}
+                />
               </div>
-              <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-500 border-2 border-white dark:border-[#2A121A] flex items-center justify-center shadow-xs">
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-white dark:border-[#2A121A] flex items-center justify-center shadow-xs">
                 <CheckCircle2 className="w-3.5 h-3.5 text-white" />
               </div>
             </div>

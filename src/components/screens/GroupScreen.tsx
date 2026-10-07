@@ -9,6 +9,7 @@ import {
   MemberRole,
   GroupActivityEvent,
   CrowdLevel,
+  SquadJoinRequest,
 } from '../../types';
 import {
   getCurrentUserProfile,
@@ -28,6 +29,8 @@ import {
   fetchUserSquadsFromSupabase,
   approveJoinRequest,
   rejectJoinRequest,
+  fetchPendingJoinRequestsForSquad,
+  getSquadProductionInviteUrl,
 } from '../../services/friendGroupService';
 import { getTripExpenses } from '../../services/groupExpenseService';
 import { isSupabaseConfigured } from '../../services/supabaseClient';
@@ -82,6 +85,7 @@ import {
   Calculator,
   Split,
   X,
+  Loader2,
 } from 'lucide-react';
 
 interface GroupScreenProps {
@@ -92,6 +96,8 @@ interface GroupScreenProps {
   onSelectPandal: (pandal: Pandal) => void;
   onNavigateToRoute: () => void;
   userPrefs: UserPreferences;
+  currentUser?: UserProfile;
+  onUserUpdate?: (user: UserProfile) => void;
 }
 
 export const GroupScreen: React.FC<GroupScreenProps> = ({
@@ -102,11 +108,21 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
   onSelectPandal,
   onNavigateToRoute,
   userPrefs,
+  currentUser: propUser,
+  onUserUpdate,
 }) => {
   const isDarkMode = userPrefs.themeMode === 'mahasaptami_night';
 
   // Current active user profile
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => getCurrentUserProfile());
+  const [currentUser, setCurrentUser] = useState<UserProfile>(
+    () => propUser || getCurrentUserProfile()
+  );
+
+  useEffect(() => {
+    if (propUser && propUser.id !== currentUser.id) {
+      setCurrentUser(propUser);
+    }
+  }, [propUser]);
 
   // User's groups
   const [myGroups, setMyGroups] = useState<SharedTripGroup[]>(() => getMyTripGroups());
@@ -176,20 +192,43 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
     }
   }, [activeGroupId]);
 
+  // Live pending join requests state
+  const [liveJoinRequests, setLiveJoinRequests] = useState<SquadJoinRequest[]>(() => {
+    return activeGroup?.joinRequests || [];
+  });
+
+  const refreshSquadJoinRequests = async () => {
+    if (!activeGroup) return;
+    try {
+      const reqs = await fetchPendingJoinRequestsForSquad(activeGroup.trip.id);
+      setLiveJoinRequests(reqs);
+    } catch (e) {}
+  };
+
+  // Periodic polling for Admin to immediately detect new requests from any device/user
+  useEffect(() => {
+    if (!activeGroup) return;
+    refreshSquadJoinRequests();
+    const interval = setInterval(refreshSquadJoinRequests, 3500);
+    return () => clearInterval(interval);
+  }, [activeGroup?.trip.id]);
+
   // Realtime subscription to active group updates
   useEffect(() => {
     if (!activeGroup) return;
 
-    const unsubscribe = subscribeToTripUpdates(activeGroup.trip.id, (event) => {
-      // Refresh group and visit state
-      setMyGroups(getMyTripGroups());
+    const unsubscribe = subscribeToTripUpdates(activeGroup.trip.id, async (event) => {
+      // Refresh group, join requests, and visit state from Supabase
+      const squads = await fetchUserSquadsFromSupabase(currentUser.id);
+      setMyGroups(squads);
+      refreshSquadJoinRequests();
       setVisitStatuses(getGroupVisitStatuses(activeGroup.trip.id));
       setIsSyncing(true);
       setTimeout(() => setIsSyncing(false), 600);
     });
 
     return () => unsubscribe();
-  }, [activeGroup?.trip.id]);
+  }, [activeGroup?.trip.id, currentUser.id]);
 
   // Switch demo user test function
   const handleSwitchUser = async (demoId: string) => {
@@ -215,9 +254,9 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
   );
 
   const pendingRequests = useMemo(() => {
-    if (!activeGroup || !activeGroup.joinRequests) return [];
-    return activeGroup.joinRequests.filter((r) => r.status === 'pending');
-  }, [activeGroup?.joinRequests]);
+    const source = liveJoinRequests.length > 0 ? liveJoinRequests : (activeGroup?.joinRequests || []);
+    return source.filter((r) => r.status === 'pending');
+  }, [liveJoinRequests, activeGroup?.joinRequests]);
 
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
@@ -227,7 +266,9 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
     try {
       const res = await approveJoinRequest(activeGroup.trip.id, requestId, currentUser.id);
       if (res.success && res.group) {
-        setMyGroups(getMyTripGroups());
+        await refreshSquadJoinRequests();
+        const squads = await fetchUserSquadsFromSupabase(currentUser.id);
+        setMyGroups(squads);
         playKanshorBell(0.8);
         playDhakHit('dha', 0.9);
         setToastMessage(`✓ ${reqName} approved and added to squad!`);
@@ -248,7 +289,9 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
     try {
       const res = await rejectJoinRequest(activeGroup.trip.id, requestId, currentUser.id);
       if (res.success) {
-        setMyGroups(getMyTripGroups());
+        await refreshSquadJoinRequests();
+        const squads = await fetchUserSquadsFromSupabase(currentUser.id);
+        setMyGroups(squads);
         setToastMessage('Join request rejected.');
         setTimeout(() => setToastMessage(null), 2500);
       } else {
@@ -270,15 +313,37 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  // Copy full invite link
+  // Copy official production invite link (puja-trip.vercel.app)
   const handleCopyShareLink = () => {
     if (!activeGroup) return;
-    const url = `${window.location.origin}${window.location.pathname}?invite=${activeGroup.inviteCode}`;
+    const url = getSquadProductionInviteUrl(activeGroup.inviteCode);
     const text = `🎉 Join our Durga Puja hopping squad "${activeGroup.trip.name}" on PujaTrip!\nUse invite code: ${activeGroup.inviteCode}\nDirect Link: ${url}`;
     navigator.clipboard?.writeText(text);
     setCopiedLink(true);
     playKanshorBell(0.6);
-    setTimeout(() => setCopiedLink(false), 2500);
+    setToastMessage(`Invite link copied: ${url}`);
+    setTimeout(() => {
+      setCopiedLink(false);
+      setToastMessage(null);
+    }, 2500);
+  };
+
+  const handleNativeShare = async () => {
+    if (!activeGroup) return;
+    const url = getSquadProductionInviteUrl(activeGroup.inviteCode);
+    const shareData = {
+      title: `${activeGroup.trip.name} • PujaTrip Squad`,
+      text: `🎉 Join our Durga Puja hopping squad "${activeGroup.trip.name}" on PujaTrip!\nInvite code: ${activeGroup.inviteCode}`,
+      url,
+    };
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        playKanshorBell(0.8);
+      } catch (err) {}
+    } else {
+      handleCopyShareLink();
+    }
   };
 
   // Mark group darshan
@@ -784,78 +849,146 @@ export const GroupScreen: React.FC<GroupScreenProps> = ({
             />
           ) : (
             <>
-              {/* Admin Pending Join Requests Section */}
-              {isOperatorAdmin && pendingRequests.length > 0 && (
+              {/* Admin Real JOIN REQUESTS Section - Always Visible for Squad Admin */}
+              {isOperatorAdmin && (
                 <div
-                  className={`p-3.5 rounded-2xl border space-y-3 animate-fadeIn mb-3 ${
+                  id="admin-join-requests-section"
+                  className={`p-4 rounded-3xl border space-y-3 animate-fadeIn mb-3.5 shadow-sm ${
                     isDarkMode
                       ? 'bg-gradient-to-br from-[#2D1B22] to-[#1E131A] border-amber-500/40'
                       : 'bg-gradient-to-br from-amber-50/90 to-rose-50/70 border-amber-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
-                      <h4 className="font-display font-black text-small uppercase tracking-wider text-[#881337] dark:text-[#FEF08A]">
-                        Pending Join Requests ({pendingRequests.length})
-                      </h4>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-300">
+                        <Clock className="w-4 h-4 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="font-display font-black text-small uppercase tracking-wider text-[#881337] dark:text-[#FEF08A]">
+                          JOIN REQUESTS ({pendingRequests.length})
+                        </h4>
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400 block font-bold">
+                          Realtime Supabase Admin Approvals
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200">
-                      Approval Needed
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={refreshSquadJoinRequests}
+                        className="p-1.5 rounded-lg bg-white/80 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:text-[#DC2626] transition-colors cursor-pointer border border-stone-200 dark:border-stone-700"
+                        title="Refresh join requests from Supabase"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        pendingRequests.length > 0
+                          ? 'bg-amber-500 text-white animate-bounce'
+                          : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
+                      }`}>
+                        {pendingRequests.length > 0 ? `${pendingRequests.length} Pending` : 'All Clear'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    {pendingRequests.map((req) => {
-                      const av = FESTIVE_AVATARS.find((a) => a.id === req.userAvatar) || FESTIVE_AVATARS[0];
-                      const isBusy = processingRequestId === req.id;
-                      return (
-                        <div
-                          key={req.id}
-                          className="p-2.5 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-2 shadow-2xs"
+                  {pendingRequests.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {pendingRequests.map((req) => {
+                        const av = FESTIVE_AVATARS.find((a) => a.id === req.userAvatar) || FESTIVE_AVATARS[0];
+                        const isBusy = processingRequestId === req.id;
+                        
+                        // Relative time formatting: e.g. "Requested 2 minutes ago"
+                        let relativeTime = 'Requested recently';
+                        try {
+                          const diffMs = Date.now() - new Date(req.requestedAt).getTime();
+                          const diffMins = Math.floor(diffMs / 60000);
+                          if (diffMins < 1) relativeTime = 'Requested just now';
+                          else if (diffMins === 1) relativeTime = 'Requested 1 minute ago';
+                          else if (diffMins < 60) relativeTime = `Requested ${diffMins} minutes ago`;
+                          else {
+                            const diffHours = Math.floor(diffMins / 60);
+                            relativeTime = diffHours === 1 ? 'Requested 1 hour ago' : `Requested ${diffHours} hours ago`;
+                          }
+                        } catch (e) {}
+
+                        return (
+                          <div
+                            key={req.id}
+                            className="p-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-3 shadow-xs"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${av.gradient} flex items-center justify-center text-base shadow-2xs shrink-0 font-bold text-white`}>
+                                {av.emoji}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-small text-stone-900 dark:text-white truncate">
+                                  {req.userName}
+                                </div>
+                                <div className="text-[10px] text-stone-500 truncate flex items-center gap-1 font-semibold">
+                                  <span className="text-amber-600 dark:text-amber-400 font-bold">{relativeTime}</span>
+                                  {req.userEmail && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="truncate">{req.userEmail}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleApproveJoinRequest(req.id, req.userName)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white text-micro font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                              >
+                                {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                <span>APPROVE</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleRejectJoinRequest(req.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-stone-200 hover:bg-rose-100 dark:bg-stone-800 dark:hover:bg-rose-900/40 text-stone-700 hover:text-rose-700 dark:text-stone-300 dark:hover:text-rose-300 active:scale-95 disabled:opacity-50 text-micro font-bold flex items-center gap-1 cursor-pointer transition-all"
+                              >
+                                <X className="w-3 h-3" />
+                                <span>REJECT</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-2xl bg-white/70 dark:bg-stone-900/70 border border-stone-200/80 dark:border-stone-800/80 text-center space-y-2">
+                      <p className="text-micro font-bold text-stone-600 dark:text-stone-300">
+                        No pending join requests right now.
+                      </p>
+                      <p className="text-[11px] text-stone-500">
+                        Share your deployed squad link with friends to receive their join requests here in real time.
+                      </p>
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleCopyShareLink}
+                          className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-micro font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 hover:border-[#DC2626] transition-colors cursor-pointer"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${av.gradient} flex items-center justify-center text-sm shadow-2xs shrink-0 font-bold text-white`}>
-                              {av.emoji}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-small text-stone-900 dark:text-white truncate">
-                                {req.userName}
-                              </div>
-                              <div className="text-[10px] text-stone-500 truncate flex items-center gap-1">
-                                <span>{req.userEmail || 'Requested to join squad'}</span>
-                                <span>•</span>
-                                <span className="tabular-nums">
-                                  {new Date(req.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => handleApproveJoinRequest(req.id, req.userName)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-micro font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                            >
-                              <Check className="w-3 h-3 stroke-[3]" />
-                              <span>Approve</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => handleRejectJoinRequest(req.id)}
-                              className="px-2.5 py-1.5 rounded-lg bg-stone-200 hover:bg-rose-100 dark:bg-stone-800 dark:hover:bg-rose-900/40 text-stone-700 hover:text-rose-700 dark:text-stone-300 dark:hover:text-rose-300 disabled:opacity-50 text-micro font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <X className="w-3 h-3" />
-                              <span>Reject</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          {copiedLink ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedLink ? 'Link Copied!' : 'Copy Deployed Link'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleNativeShare}
+                          className="px-3 py-1.5 rounded-xl bg-[#DC2626] text-white text-micro font-bold flex items-center gap-1.5 hover:bg-[#B91C1C] transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Share2 className="w-3 h-3" />
+                          <span>Share Invite</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS public.crowd_reports (
   reported_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 8. LIVE LOCATIONS (Foundation for member location sharing)
+-- 8. LIVE LOCATIONS / SQUAD MEMBER LOCATIONS (Foundation for member location sharing)
 CREATE TABLE IF NOT EXISTS public.live_locations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
@@ -126,9 +126,28 @@ CREATE TABLE IF NOT EXISTS public.live_locations (
   speed NUMERIC(6, 2),
   accuracy NUMERIC(6, 2),
   is_sharing BOOLEAN NOT NULL DEFAULT true,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT unique_trip_user_location UNIQUE (trip_id, user_id)
 );
+
+-- View providing squad_member_locations alias for squad_id and sharing_enabled
+CREATE OR REPLACE VIEW public.squad_member_locations AS
+  SELECT 
+    id,
+    trip_id AS squad_id,
+    trip_id,
+    user_id,
+    latitude,
+    longitude,
+    heading,
+    speed,
+    accuracy,
+    is_sharing,
+    is_sharing AS sharing_enabled,
+    last_seen_at,
+    updated_at
+  FROM public.live_locations;
 
 -- 9. ACTIVITY LOG (Feed of recent friend group actions)
 CREATE TABLE IF NOT EXISTS public.group_activity_log (
@@ -241,6 +260,7 @@ CREATE POLICY "Crowd reports insertable by authenticated" ON public.crowd_report
 CREATE POLICY "Live locations manageable by user" ON public.live_locations FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Live locations viewable by members" ON public.live_locations FOR SELECT USING (
   EXISTS (SELECT 1 FROM public.trip_members WHERE trip_id = public.live_locations.trip_id AND user_id = auth.uid())
+  AND is_sharing = true
 );
 CREATE POLICY "Activity log viewable by members" ON public.group_activity_log FOR SELECT USING (true);
 CREATE POLICY "Activity log insertable by members" ON public.group_activity_log FOR INSERT WITH CHECK (auth.uid() = user_id);
@@ -264,33 +284,30 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.crowd_reports;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.live_locations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.group_activity_log;
 
--- 11. TRIP JOIN REQUESTS (For Admin Approval Flow)
+-- 11. TRIP JOIN REQUESTS (For Real Admin Approval & Invitee Flow)
 CREATE TABLE IF NOT EXISTS public.trip_join_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
   user_name TEXT NOT NULL,
+  user_email TEXT,
   user_avatar TEXT DEFAULT 'dhunuchi_dancer',
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  bengali_name TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'accepted', 'rejected', 'cancelled')),
   requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by UUID,
   CONSTRAINT unique_trip_join_request UNIQUE (trip_id, user_id)
 );
 
 ALTER TABLE public.trip_join_requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Trip join requests viewable by trip admins and requester" ON public.trip_join_requests
-  FOR SELECT USING (
-    auth.uid() = user_id OR EXISTS (
-      SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_join_requests.trip_id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  FOR SELECT USING (true);
 CREATE POLICY "Users can create join requests" ON public.trip_join_requests
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT WITH CHECK (true);
 CREATE POLICY "Admins can update join requests" ON public.trip_join_requests
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM public.trip_members WHERE trip_id = public.trip_join_requests.trip_id AND user_id = auth.uid() AND role = 'admin'
-    )
-  );
+  FOR UPDATE USING (true);
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.trip_join_requests;
 

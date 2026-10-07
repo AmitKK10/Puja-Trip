@@ -18,6 +18,7 @@ import {
   formatDistance,
   formatTimeAgo,
 } from '../utils/geoUtils';
+import { ensureValidUuid } from '../utils/userProfileHelper';
 
 // Local storage keys
 const LOCAL_STORAGE_LOCATION_SETTINGS_PREFIX = 'pujatrip_loc_settings_v1_';
@@ -290,24 +291,89 @@ export const updateMemberLocation = async (
 
   // Sync to Supabase table if available
   const supabase = getSupabase();
-  if (supabase && record.tripId && !record.userId.startsWith('demo_test_')) {
+  if (supabase && record.tripId) {
     try {
-      await supabase.from('live_locations').upsert({
-        trip_id: record.tripId,
-        user_id: record.userId,
-        user_name: record.userName,
-        latitude: record.latitude,
-        longitude: record.longitude,
-        heading: record.heading || null,
-        speed: record.speed || null,
-        accuracy: record.accuracy || null,
-        is_sharing: record.isSharing,
-        updated_at: record.updatedAt,
-      });
+      const validUid = ensureValidUuid(record.userId);
+      await supabase.from('live_locations').upsert(
+        {
+          trip_id: record.tripId,
+          user_id: validUid,
+          latitude: record.latitude,
+          longitude: record.longitude,
+          heading: record.heading || null,
+          speed: record.speed || null,
+          accuracy: record.accuracy || null,
+          is_sharing: record.isSharing,
+          last_seen_at: record.updatedAt || new Date().toISOString(),
+          updated_at: record.updatedAt,
+        },
+        { onConflict: 'trip_id,user_id' }
+      );
     } catch (err) {
       console.warn('Failed to upsert live location to Supabase:', err);
     }
   }
+};
+
+/**
+ * Fetches real active squad member locations from Supabase for cross-device visibility.
+ */
+export const fetchSquadLocationsFromSupabase = async (
+  tripId: string,
+  city: CityId = 'kolkata'
+): Promise<LiveLocationRecord[]> => {
+  const supabase = getSupabase();
+  if (supabase && tripId) {
+    try {
+      const { data, error } = await supabase
+        .from('live_locations')
+        .select('*')
+        .eq('trip_id', tripId)
+        .eq('is_sharing', true);
+
+      if (!error && data) {
+        const stored = getStoredGroupLocations(tripId);
+        const map = new Map<string, LiveLocationRecord>();
+        stored.forEach((l) => map.set(l.userId, l));
+
+        data.forEach((row: any) => {
+          const lat = Number(row.latitude);
+          const lng = Number(row.longitude);
+          const mapCoords = latLngToMapCoordinates(lat, lng, city);
+          const existing = map.get(row.user_id);
+
+          map.set(row.user_id, {
+            id: row.id,
+            tripId: row.trip_id,
+            userId: row.user_id,
+            userName: existing?.userName || 'Squad Member',
+            userAvatar: existing?.userAvatar || 'dhunuchi_dancer',
+            latitude: lat,
+            longitude: lng,
+            mapX: mapCoords.mapX,
+            mapY: mapCoords.mapY,
+            heading: row.heading ? Number(row.heading) : undefined,
+            speed: row.speed ? Number(row.speed) : undefined,
+            accuracy: row.accuracy ? Number(row.accuracy) : undefined,
+            isSharing: Boolean(row.is_sharing),
+            updatedAt: row.updated_at || new Date().toISOString(),
+            lastSeenAt: row.updated_at,
+            isBatterySaver: existing?.isBatterySaver ?? true,
+            isStationary: existing?.isStationary ?? false,
+            gpsState: existing?.gpsState ?? 'active_watching',
+          });
+        });
+
+        const merged = Array.from(map.values());
+        saveStoredGroupLocations(tripId, merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn('Error fetching squad locations from Supabase:', err);
+    }
+  }
+
+  return getStoredGroupLocations(tripId);
 };
 
 // ----------------------------------------------------------------------------
@@ -776,7 +842,8 @@ export const getGroupMemberLocationsWithDetails = (
   // Determine current user's location record
   let myLocation: GroupMemberLocation | null = null;
   if (myLocRecord && myLocRecord.isSharing) {
-    const isStale = Date.now() - new Date(myLocRecord.updatedAt).getTime() > 5 * 60 * 1000;
+    const ageMs = Date.now() - new Date(myLocRecord.updatedAt).getTime();
+    const myStatus = ageMs <= 60 * 1000 ? 'live' : ageMs <= 10 * 60 * 1000 ? 'recent' : 'offline';
     const mapCoords = latLngToMapCoordinates(myLocRecord.latitude, myLocRecord.longitude, city);
 
     myLocation = {
@@ -784,7 +851,9 @@ export const getGroupMemberLocationsWithDetails = (
       mapX: myLocRecord.mapX || mapCoords.mapX,
       mapY: myLocRecord.mapY || mapCoords.mapY,
       profile: currentUserProfile,
-      status: isStale ? 'stale' : 'active',
+      phoneNumber: currentUserProfile.phoneNumber,
+      role: 'admin',
+      status: myStatus,
       isCurrentUser: true,
     };
   }
@@ -799,6 +868,7 @@ export const getGroupMemberLocationsWithDetails = (
       id: member.userId,
       displayName: 'Trip Squad Member',
       avatarUrl: '🪔',
+      phoneNumber: undefined,
       isLocationSharingEnabled: false,
       lastSeenAt: member.lastActiveAt,
       isOnline: false,
@@ -819,14 +889,16 @@ export const getGroupMemberLocationsWithDetails = (
         isSharing: false,
         updatedAt: member.lastActiveAt,
         profile,
-        status: 'disabled',
+        phoneNumber: member.profile?.phoneNumber || profile.phoneNumber,
+        role: member.role || 'member',
+        status: 'location_off',
         isCurrentUser: false,
       });
       continue;
     }
 
     const diffMs = Date.now() - new Date(record.updatedAt).getTime();
-    const isStale = diffMs > 5 * 60 * 1000; // Older than 5 mins is marked stale
+    const memberStatus = diffMs <= 60 * 1000 ? 'live' : diffMs <= 10 * 60 * 1000 ? 'recent' : 'offline';
 
     const mapCoords = latLngToMapCoordinates(record.latitude, record.longitude, city);
 
@@ -877,6 +949,8 @@ export const getGroupMemberLocationsWithDetails = (
       mapX: record.mapX || mapCoords.mapX,
       mapY: record.mapY || mapCoords.mapY,
       profile,
+      phoneNumber: member.profile?.phoneNumber || profile.phoneNumber,
+      role: member.role || 'member',
       distanceMeters,
       formattedDistance,
       direction,
@@ -887,14 +961,14 @@ export const getGroupMemberLocationsWithDetails = (
       formattedWalkingDistance,
       nearestLandmarkName,
       bengaliLandmarkName,
-      status: isStale ? 'stale' : 'active',
+      status: memberStatus,
       isCurrentUser: false,
     });
   }
 
   const activeSharingCount =
-    (myLocation && myLocation.status === 'active' ? 1 : 0) +
-    otherMemberLocations.filter((m) => m.status === 'active').length;
+    (myLocation && (myLocation.status === 'live' || myLocation.status === 'recent') ? 1 : 0) +
+    otherMemberLocations.filter((m) => m.status === 'live' || m.status === 'recent').length;
 
   return {
     myLocation,
@@ -1096,12 +1170,26 @@ export const seedDemoSquadLocationsIfEmpty = (
       ];
 
   const updated = [...existing];
+  const nowMs = Date.now();
 
   members.forEach((m, idx) => {
     if (updated.some((l) => l.userId === m.userId)) return;
 
     const offset = mockOffsets[idx % mockOffsets.length];
-    const isRahulStationaryInQueue = idx === 1; // Rahul stationary at Sreebhumi queue (12 mins)
+    const isStationaryInQueue = idx === 1;
+
+    // Realistic timestamp simulation:
+    // Member 0: LIVE (12s ago)
+    // Member 1: RECENT (2 mins ago)
+    // Member 2: OFFLINE (14 mins ago)
+    // Member 3: LOCATION OFF (isSharing = false)
+    const timestamp =
+      idx === 0
+        ? new Date(nowMs - 12000).toISOString()
+        : idx === 1
+        ? new Date(nowMs - 2 * 60000).toISOString()
+        : new Date(nowMs - 14 * 60000).toISOString();
+
     const record: LiveLocationRecord = {
       id: `loc_demo_${m.userId}`,
       tripId,
@@ -1112,13 +1200,13 @@ export const seedDemoSquadLocationsIfEmpty = (
       longitude: offset.lng,
       mapX: offset.mapX,
       mapY: offset.mapY,
-      isSharing: idx !== 3, // Raj is offline for realistic squad diversity
+      isSharing: idx !== 3, // idx 3 has location sharing turned OFF
       duration: '3h',
-      updatedAt: idx === 2 ? new Date(Date.now() - 6 * 60000).toISOString() : now, // Suman is stale (>5m)
+      updatedAt: timestamp,
       isBatterySaver: true,
-      isStationary: isRahulStationaryInQueue,
-      stationaryDurationMinutes: isRahulStationaryInQueue ? 12 : 0,
-      gpsState: isRahulStationaryInQueue ? 'sleep_stationary' : idx !== 3 ? 'active_watching' : 'disabled',
+      isStationary: isStationaryInQueue,
+      stationaryDurationMinutes: isStationaryInQueue ? 12 : 0,
+      gpsState: isStationaryInQueue ? 'sleep_stationary' : idx !== 3 ? 'active_watching' : 'disabled',
     };
     updated.push(record);
   });

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CityId, UserPreferences, UserWalkingEnergyConfig } from '../../types';
 import { getPuja2026CalendarItems } from '../../data/festivalCalendar2026';
 import { DurgaThirdEye, DhakIcon, ShankhaIcon, AlpanaCorner, AlpanaDivider } from '../common/BengaliMotifs';
+import { DEVELOPER_PHOTO_DATA_URL, DEVELOPER_PHOTO_URL } from '../../data/developerPhoto';
 import { PWAInstallCard } from '../common/PWAInstallCard';
 import { playKanshorBell, playDhakHit } from '../../utils/audioSynth';
 import {
@@ -480,11 +481,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* Developer avatar */}
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#991B1B] via-[#DC2626] to-[#B45309] p-0.5 flex items-center justify-center shrink-0 shadow-md">
-              <div className="w-full h-full rounded-[14px] bg-[#2A121A] flex flex-col items-center justify-center text-white border border-amber-300/40">
-                <span className="font-display font-black text-body text-[#FEF08A]">AK</span>
-                <span className="text-[8px] font-mono tracking-widest text-amber-200 uppercase -mt-1 font-bold">DEV</span>
-              </div>
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#991B1B] via-[#DC2626] to-[#B45309] p-0.5 flex items-center justify-center shrink-0 shadow-md ring-1 ring-amber-300/40">
+              <img
+                src={DEVELOPER_PHOTO_DATA_URL}
+                alt="Amit Kiran Kar"
+                className="w-full h-full rounded-full object-cover object-center shadow-inner"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== window.location.origin + DEVELOPER_PHOTO_URL) {
+                    target.src = DEVELOPER_PHOTO_URL;
+                  }
+                }}
+              />
             </div>
 
             <div className="min-w-0">

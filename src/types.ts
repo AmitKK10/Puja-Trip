@@ -620,6 +620,8 @@ export interface TripDayPlan {
   endTime?: string;
 }
 
+export type SquadJoinRequestStatus = 'pending' | 'approved' | 'accepted' | 'rejected' | 'cancelled';
+
 export interface SquadJoinRequest {
   id: string;
   tripId: string;
@@ -629,7 +631,10 @@ export interface SquadJoinRequest {
   userAvatar?: string;
   bengaliName?: string;
   requestedAt: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  status: SquadJoinRequestStatus;
 }
 
 export type SquadJoinApprovalMode = 'admin_approval' | 'open_with_link';
@@ -734,6 +739,7 @@ export type MemberRole = 'admin' | 'member';
 export interface UserProfile {
   id: string; // Auth User ID (UUID)
   email?: string;
+  phoneNumber?: string;
   displayName: string;
   bengaliName?: string;
   avatarUrl: string; // Festive avatar icon / image
@@ -918,6 +924,7 @@ export interface LiveLocationRecord {
   duration?: LocationSharingDuration;
   expiresAt?: string;
   updatedAt: string;
+  lastSeenAt?: string;
   // Battery & Stationary flags
   isBatterySaver?: boolean;
   isStationary?: boolean;
@@ -937,8 +944,10 @@ export interface GroupMemberLocation extends LiveLocationRecord {
   formattedWalkingDistance?: string;
   nearestLandmarkName?: string;
   bengaliLandmarkName?: string;
-  status: 'active' | 'stale' | 'disabled';
+  status: 'active' | 'stale' | 'disabled' | 'live' | 'recent' | 'offline' | 'location_off';
   isCurrentUser: boolean;
+  phoneNumber?: string;
+  role?: MemberRole;
 }
 
 export interface MemberMeetingDistanceInfo {
